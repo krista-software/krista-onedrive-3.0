@@ -19,6 +19,8 @@ Renames the file or folder given at the Source path to the new name provided.
 | Source           | Text | Yes      | Full path to the file or folder to be renamed (e.g., /Documents/old_name.txt or /Folders/OldFolder). For shared drives, use format driveId:/path/to/file |
 | Target File Name | Text | Yes      | New name for the file or folder (without the path, e.g., new_name.txt or NewFolder)                                                                      |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type   | Description                                                           |

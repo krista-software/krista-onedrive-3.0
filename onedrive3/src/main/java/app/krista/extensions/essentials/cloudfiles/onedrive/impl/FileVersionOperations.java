@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -52,35 +52,28 @@ public class FileVersionOperations {
     public static final String UPDATED = "Updated";
     public static final String CREATED = "Created";
     private static final Logger LOGGER = LoggerFactory.getLogger(FileVersionOperations.class);
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final ValidationTypeUtil validationTypeUtil;
     private final TelemetryHelper telemetryHelper;
 
-    /**
-     * Constructs a FileVersionOperations instance with factory-created provider.
-     * This constructor is used for dependency injection.
-     *
-     * @param factory            The factory to create a GraphServiceClientProvider
-     * @param validationTypeUtil Utility for validation operations
-     * @param telemetryHelper    Helper for telemetry recording
-     */
     @Inject
     public FileVersionOperations(GraphServiceClientProviderFactory factory, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
-        this(factory.create(), validationTypeUtil, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.validationTypeUtil = validationTypeUtil;
+        this.telemetryHelper = telemetryHelper;
     }
 
-    /**
-     * Constructs a FileVersionOperations instance with a provided GraphServiceClientProvider.
-     * This constructor allows for more flexibility in testing and configuration.
-     *
-     * @param provider           The GraphServiceClientProvider to use for API calls
-     * @param validationTypeUtil Utility for validation operations
-     * @param telemetryHelper    Helper for telemetry recording
-     */
     public FileVersionOperations(GraphServiceClientProvider provider, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.validationTypeUtil = validationTypeUtil;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -239,8 +232,8 @@ public class FileVersionOperations {
             if (FileUtil.isPersonalDrive(source)) {
                 String path = FileUtil.getRelativeFilePath(source);
                 DriveItem driveItem = path.isEmpty()
-                        ? FileUtil.getRootUserRequestBuilder(provider).buildRequest().get()
-                        : FileUtil.getRootUserRequestBuilder(provider).itemWithPath(path).buildRequest().get();
+                        ? FileUtil.getRootUserRequestBuilder(createProvider()).buildRequest().get()
+                        : FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(path).buildRequest().get();
                 return driveItem != null && driveItem.folder != null;
             }
         } catch (GraphServiceException | IllegalArgumentException cause) {
@@ -268,7 +261,7 @@ public class FileVersionOperations {
      * @return A UserRequestBuilder for making Graph API requests
      */
     private UserRequestBuilder getUserRequestBuilder() {
-        return provider.getUserRequestBuilder(null, null);
+        return createProvider().getUserRequestBuilder(null, null);
     }
 
     /**

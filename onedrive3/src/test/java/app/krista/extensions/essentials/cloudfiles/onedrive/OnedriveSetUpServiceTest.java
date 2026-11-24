@@ -13,13 +13,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive;
 
 import app.krista.extension.executor.ExtensionResponse;
-import app.krista.extensions.essentials.cloudfiles.onedrive.impl.OnedriveSubscription;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.connectors.GraphServiceClientProvider;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.connectors.GraphServiceClientProviderFactory;
 import app.krista.ksdk.telemetry.TelemetryMetrics;
@@ -60,16 +59,13 @@ public class OnedriveSetUpServiceTest {
         ContextService mockContextService = createMockContextService();
         OnedriveAttributes mockAttributes = createMockAttributes();
         GraphServiceClientProviderFactory mockClientProviderFactory = createMockClientProviderFactory();
-        OnedriveRequestAuthenticator mockRequestAuthenticator = createMockRequestAuthenticator();
-        OnedriveSubscription mockOnedriveSubscription = createMockOnedriveSubscription();
         TelemetryMetrics mockTelemetryMetrics = createMockTelemetryMetrics();
 
         onedriveSetUpService = new OnedriveSetUpService(
                 mockContextService,           // ContextService - mock for routing URL and account ID
                 mockAttributes,               // OnedriveAttributes - mock for configuration
                 mockClientProviderFactory,    // GraphServiceClientProviderFactory - mock for client creation
-                mockRequestAuthenticator,     // OnedriveRequestAuthenticator - mock for authentication
-                mockOnedriveSubscription,     // OnedriveSubscription - mock for subscription management
+                null,                         // SubscriptionStorageStore - null for testing
                 mockTelemetryMetrics          // TelemetryMetrics - mock for telemetry
         );
     }
@@ -108,7 +104,7 @@ public class OnedriveSetUpServiceTest {
     }
 
     private GraphServiceClientProviderFactory createMockClientProviderFactory() {
-        return new GraphServiceClientProviderFactory(null, null, null, null, createMockProvider()) {
+        return new GraphServiceClientProviderFactory(null, null, null, null) {
             @Override
             public GraphServiceClientProvider create(OnedriveAttributes onedriveAttributes) {
                 return createMockProvider();
@@ -117,21 +113,6 @@ public class OnedriveSetUpServiceTest {
             @Override
             public GraphServiceClientProvider create() {
                 return createMockProvider();
-            }
-        };
-    }
-
-    private OnedriveRequestAuthenticator createMockRequestAuthenticator() {
-        return new OnedriveRequestAuthenticator(null, null) {
-            // Mock implementation - all methods return default values
-        };
-    }
-
-    private OnedriveSubscription createMockOnedriveSubscription() {
-        return new OnedriveSubscription(null) {
-            @Override
-            public void createSubscriptionFromClientSide(String routingUrl, GraphServiceClientProvider provider) {
-                // Mock implementation - do nothing for testing
             }
         };
     }
@@ -145,14 +126,14 @@ public class OnedriveSetUpServiceTest {
 
             @Override
             public void incrementCounter(String s, long l) {
-                
+
             }
 
             @Override
             public void incrementCounter(String s, long l, Map<String, String> map) {
 
             }
-            
+
 
             @Override
             public void recordDuration(String metric, long duration) {
@@ -191,27 +172,6 @@ public class OnedriveSetUpServiceTest {
 
 
     /**
-     * Test validateConnection with empty connection attributes
-     */
-    @Test
-    public void testValidateConnectionWithEmptyAttributes() {
-        Map<String, Object> emptyAttributes = new HashMap<>();
-        // This should not throw an exception
-        onedriveSetUpService.validateConnection(emptyAttributes);
-    }
-
-
-    /**
-     * Test validateConnectionFromClientSide with empty attributes
-     */
-    @Test
-    public void testValidateConnectionFromClientSideWithEmptyAttributes() {
-        Map<String, Object> emptyAttributes = new HashMap<>();
-        boolean result = onedriveSetUpService.validateConnectionFromClientSide(emptyAttributes);
-        assertFalse("Should return false for empty attributes", result);
-    }
-
-    /**
      * Test testConnection method with fromStudio = true - but with null email to avoid API calls
      */
     @Test
@@ -222,7 +182,7 @@ public class OnedriveSetUpServiceTest {
 
         OnedriveSetUpService serviceWithNullEmail = new OnedriveSetUpService(
                 createMockContextService(), attributesWithNullEmail, createMockClientProviderFactory(),
-                createMockRequestAuthenticator(), createMockOnedriveSubscription(), createMockTelemetryMetrics());
+                null, createMockTelemetryMetrics());
 
         // This should not throw an exception when email is null
         serviceWithNullEmail.testConnection(true);
@@ -239,7 +199,7 @@ public class OnedriveSetUpServiceTest {
 
         OnedriveSetUpService serviceWithNullEmail = new OnedriveSetUpService(
                 createMockContextService(), attributesWithNullEmail, createMockClientProviderFactory(),
-                createMockRequestAuthenticator(), createMockOnedriveSubscription(), createMockTelemetryMetrics());
+                null, createMockTelemetryMetrics());
 
         // This should not throw an exception when email is null
         serviceWithNullEmail.testConnection(false);
@@ -261,22 +221,13 @@ public class OnedriveSetUpServiceTest {
     }
 
     /**
-     * Test getRequestAuthenticator method
-     */
-    @Test
-    public void testGetRequestAuthenticator() {
-        OnedriveRequestAuthenticator authenticator = onedriveSetUpService.getRequestAuthenticator();
-        assertNotNull("Request authenticator should not be null", authenticator);
-    }
-
-    /**
      * Test getOnedriveAttributes method
      */
     @Test
     public void testGetOnedriveAttributes() {
         OnedriveAttributes attributes = onedriveSetUpService.getOnedriveAttributes();
         assertNotNull("Onedrive attributes should not be null", attributes);
-        assertEquals("Mail ID should match", TEST_EMAIL, attributes.getMailId());
+        assertEquals("Mail ID should match", TEST_EMAIL, attributes.getEmail());
     }
 
     /**
@@ -299,36 +250,6 @@ public class OnedriveSetUpServiceTest {
         assertNotNull("Health check response should not be null", response);
         // The showTime method is called internally during health check
         // We can verify it doesn't cause any exceptions
-    }
-
-    /**
-     * Test validateConnection with attributes containing blank email
-     */
-    @Test
-    public void testValidateConnectionWithBlankEmail() {
-        Map<String, Object> attributesWithBlankEmail = new HashMap<>();
-        attributesWithBlankEmail.put("clientId", "test-client-id");
-        attributesWithBlankEmail.put("clientSecret", "test-client-secret");
-        attributesWithBlankEmail.put("email", "");  // Blank email
-        attributesWithBlankEmail.put("tenantId", "test-tenant-id");
-
-        // This should not throw an exception and should handle blank email gracefully
-        onedriveSetUpService.validateConnection(attributesWithBlankEmail);
-    }
-
-    /**
-     * Test validateConnectionFromClientSide with attributes containing blank email
-     */
-    @Test
-    public void testValidateConnectionFromClientSideWithBlankEmail() {
-        Map<String, Object> attributesWithBlankEmail = new HashMap<>();
-        attributesWithBlankEmail.put("clientId", "test-client-id");
-        attributesWithBlankEmail.put("clientSecret", "test-client-secret");
-        attributesWithBlankEmail.put("email", "");  // Blank email
-        attributesWithBlankEmail.put("tenantId", "test-tenant-id");
-
-        boolean result = onedriveSetUpService.validateConnectionFromClientSide(attributesWithBlankEmail);
-        assertFalse("Should return false for blank email", result);
     }
 
     /**

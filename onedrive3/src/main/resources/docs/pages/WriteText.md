@@ -2,7 +2,7 @@
 
 ## Overview
 
-Uploads text content to OneDrive at the specified target location as a plain text file.
+Uploads text content to OneDrive at the specified target location as a plain text (.txt) or Markdown (.md) file.
 
 ## Request Details
 
@@ -19,6 +19,8 @@ Uploads text content to OneDrive at the specified target location as a plain tex
 | File Content   | Paragraph | Yes      | The text content to be written to the file                                                                                        |
 | Target         | Text      | Yes      | Full path where the text file should be created (e.g., /Documents/notes.txt). For shared drives, use format driveId:/path/to/file |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type         | Description                                                           |
@@ -34,7 +36,7 @@ Uploads text content to OneDrive at the specified target location as a plain tex
 | File Content | Must not be empty          | "File content is required"     |
 | Target       | Must not be empty          | "Target path is required"      |
 | Target       | Parent folder must exist   | "Target folder not found"      |
-| Target       | Should have .txt extension | "Target should be a text file" |
+| Target       | Should have a .txt or .md extension | "Invalid file name, please provide a .txt or .md file extension" |
 
 ## Error Handling
 
@@ -143,6 +145,7 @@ Uploads text content to OneDrive at the specified target location as a plain tex
 **Recommended**:
 
 - .txt (Plain text)
+- .md (Markdown)
 - .json (JSON)
 - .xml (XML)
 - .csv (CSV)

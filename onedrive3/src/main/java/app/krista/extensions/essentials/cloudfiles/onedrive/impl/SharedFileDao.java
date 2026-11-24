@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -52,6 +52,7 @@ public class SharedFileDao {
     public static final String INVITE_MAIL = "We couldn't share the file or folder due to an invalid email address. Please check the email address and try again.";
     public static final String FILE_HAS_BEEN_SHARED_SUCCESSFULLY = "File has been shared successfully";
     public static final String ERROR_CAUSE_WHILE_SHARING_FILE = "Error cause while sharing file.";
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final OperationsManagementDao operationsManagementDao;
     private final OnedriveAttributes onedriveAttributes;
@@ -61,25 +62,26 @@ public class SharedFileDao {
     @Inject
     public SharedFileDao(GraphServiceClientProviderFactory factory, OperationsManagementDao operationsManagementDao,
                          OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
-        this(factory.create(), operationsManagementDao, onedriveAttributes, validationTypeUtil, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.operationsManagementDao = operationsManagementDao;
+        this.onedriveAttributes = onedriveAttributes;
+        this.validationTypeUtil = validationTypeUtil;
+        this.telemetryHelper = telemetryHelper;
     }
 
-    /**
-     * Constructs a SharedFileDao with provided dependencies.
-     *
-     * @param provider                Provider for Graph Service Client
-     * @param operationsManagementDao DAO for file operations management
-     * @param onedriveAttributes      OneDrive configuration attributes
-     * @param validationTypeUtil      Utility for validation type operations
-     * @param telemetryHelper         Helper for telemetry recording
-     */
     public SharedFileDao(GraphServiceClientProvider provider, OperationsManagementDao operationsManagementDao,
                          OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.operationsManagementDao = operationsManagementDao;
         this.onedriveAttributes = onedriveAttributes;
         this.validationTypeUtil = validationTypeUtil;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -315,7 +317,7 @@ public class SharedFileDao {
      * @return UserRequestBuilder for Graph API operations
      */
     private UserRequestBuilder getUserRequestBuilder() {
-        return provider.getUserRequestBuilder(null, null);
+        return createProvider().getUserRequestBuilder(null, null);
     }
 
     /**

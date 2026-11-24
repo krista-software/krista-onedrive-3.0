@@ -14,30 +14,51 @@ operations including upload, download, copy, move, delete, share, and real-time 
 - **Change Notifications**: Monitor folders for file changes in real-time
 - **Folder Analytics**: Get detailed information about folder contents and statistics
 - **Batch Operations**: Perform operations on multiple files efficiently
-- **Secure Authentication**: OAuth 2.0 authentication with Microsoft Azure AD
+- **Secure Authentication**: OAuth 2.0 with three flexible modes (Quick Setup, User Auth, Server-Server)
 - **Retry Support**: Built-in retry mechanism for failed operations with validation
 
 ## Quick Start Guide
 
-### 1. Prerequisites
+### 1. Choose Authentication Mode
 
-Before using the OneDrive Files extension, you need:
+#### Quick Setup *(Recommended)*
+- Krista manages Microsoft app credentials on your behalf
+- No Azure AD app registration required
+- Just provide your Microsoft 365 email address and sign in
 
-- A Microsoft 365 account with OneDrive access
-- Azure AD application registration with appropriate permissions
-- Client ID, Client Secret, and Tenant ID from your Azure AD app
+#### User Authentication (Own Azure AD App)
+- Your organization provides its own Azure AD app registration
+- Full control over permissions and redirect URIs
+- Required for compliance-constrained environments
 
-### 2. Initial Setup
+#### Server to Server Authentication
+- No user sign-in — app authenticates directly with Microsoft
+- For automated workflows, background jobs, and service integrations
 
-1. **Register an Azure AD Application** - Follow the [Creating Microsoft App](pages/CreatingMicrosoftApp.md) guide
-2. **Configure the Extension** - See [Extension Configuration](pages/ExtensionConfiguration.md) for setup parameters
-3. **Authenticate** - Review [Authentication](pages/Authentication.md) to understand OAuth 2.0 flow
-4. **Test Connection** - Use the Test Connection catalog request to verify setup
+### 2. Setup Steps
 
-### 3. Start Using Catalog Requests
+#### For Quick Setup:
+1. Open the **Authentication** tab of the OneDrive extension
+2. Enter your **Microsoft 365 email address**
+3. Click **Authorize** and sign in with your Microsoft account
+4. Click **Test Connection** to verify
 
-Once configured, you can use any of the 20+ catalog requests to manage your OneDrive files. See
-the [Catalog Requests](#catalog-requests) section below for the complete list.
+#### For User Authentication or Server-Server:
+1. **Create Azure AD Application** — Follow the [Creating Microsoft App](pages/CreatingMicrosoftApp.md) guide
+2. Open the **Authentication** tab and click **Advanced Setup**
+3. Fill in your credentials and click **Save Changes**
+4. For User Auth: click **Authorize** to complete the OAuth sign-in
+5. Click **Test Connection** to verify
+
+See the full [Authentication Tab Guide](pages/Authentication.md) for detailed setup instructions.
+
+### 3. Monitor with the Audit Tab
+
+The **OneDrive Audit** tab provides a real-time dashboard for all operations:
+- Tracks success/failure per catalog request with execution logs
+- Shows token health, client secret expiry status, and auth event history
+- Displays file change notification counts and subscription status
+- Full request history with duration and triggered-by user
 
 ## Documentation Structure
 
@@ -56,6 +77,7 @@ the [Catalog Requests](#catalog-requests) section below for the complete list.
 ### File Operations
 
 - [Copy](pages/Copy.md) - Copy files and folders to target location
+- [Copy With Name](pages/CopyWithName.md) - Copy files with a specified target name
 - [Delete](pages/Delete.md) - Delete files and folders
 - [Download as Link](pages/DownloadAsLink.md) - Get download link for files
 - [Download as File](pages/DownloadAsFile.md) - Download files as Krista File objects
@@ -69,6 +91,7 @@ the [Catalog Requests](#catalog-requests) section below for the complete list.
 ### Folder Operations
 
 - [Create Folder](pages/CreateFolder.md) - Create new folders
+- [Get Drives](pages/GetDrives.md) - List all accessible drives (personal, business, SharePoint libraries)
 - [Get Info](pages/GetInfo.md) - Get folder statistics (async)
 - [Get Info Result](pages/GetInfoResult.md) - Retrieve folder statistics results
 - [List Files](pages/ListFiles.md) - List files in a folder (async)
@@ -92,7 +115,7 @@ the [Catalog Requests](#catalog-requests) section below for the complete list.
 
 ### Version Information
 
-- **Extension Version**: 3.0.7
+- **Extension Version**: 3.0.9
 - **Java Version**: Java 21
 - **API**: Microsoft Graph API v1.0
 
@@ -102,15 +125,17 @@ This extension requires the following Microsoft Graph API permissions:
 
 - `Files.ReadWrite.All` - Read and write access to all files
 - `Sites.ReadWrite.All` - Read and write access to SharePoint sites
-- `offline_access` - Maintain access to data
+- `User.Read` - Sign in and read the user profile
+- `offline_access` - Maintain access via refresh token (delegated auth only)
 
 ### Important Notes
 
 - **File Size Limits**: Upload operations support files up to 50 MB
 - **Path Formats**:
-    - Personal drive: `drive/root:/path/to/file`
-    - Shared drive: `drives/{driveId}/root:/path/to/file`
-- **Async Operations**: Some operations return Task IDs for retrieving results later
+    - Personal OneDrive (no Get Drives needed): `drive/root:/Documents/subfolder`
+    - SharePoint / Shared drive (use [Get Drives](pages/GetDrives.md) first to obtain the path): `drives/{driveId}/root:/FolderName`
+    - Key difference: `drive/root:/` (singular, no ID) = your own OneDrive; `drives/{id}/root:/` (plural, with drive ID) = SharePoint or any shared storage
+- **Async Operations**: Some operations (List Files, List Folders, Get Info, Search By Permissions) return a Task ID — use the **Get Result** operation to retrieve results
 - **Re-entry Support**: Most operations support re-entering corrected values on validation errors
 
 ### Common Use Cases
@@ -121,49 +146,33 @@ This extension requires the following Microsoft Graph API permissions:
 4. **Change Monitoring**: Trigger workflows when files are created or updated
 5. **Folder Organization**: Automatically organize files into folders based on criteria
 
+### Authentication Quick Reference
+
+| Authentication Mode | Azure App Required | Sign-in Required | Best For |
+|---|---|---|---|
+| Quick Setup | No | Yes (via Krista's app) | Individual users, quick start |
+| User Authentication | Yes | Yes (via your app) | Organization compliance, custom permissions |
+| Server to Server | Yes | No | Automation, background jobs, schedulers |
+
 ### Understanding Error Messages
 
 This extension provides clear, actionable error messages to help you resolve issues quickly:
 
-#### Common Error Types
+**Path and File Errors**: File or folder not found, invalid path format, insufficient permissions
 
-**Path and File Errors**: These occur when files or folders can't be found
-- File or folder doesn't exist at the specified path
-- Invalid path format
-- Missing permissions to access the location
+**Authentication Errors**: Session expired (click Authorize to re-authenticate), invalid credentials, `AADSTS500112` redirect URI mismatch (re-save credentials in the Authentication tab)
 
-**Authentication Errors**: These indicate issues with your Microsoft account connection
-- Session expired - need to sign in again
-- Invalid or missing credentials
-- Insufficient permissions
+**Service Errors**: OneDrive temporarily unavailable, network issues, file size exceeds 50 MB limit
 
-**Service Errors**: These are temporary issues with Microsoft OneDrive
-- OneDrive service temporarily unavailable
-- Network connectivity problems
-- File size exceeds limits (50MB for uploads)
+**Validation Errors**: Invalid folder names (characters `* : < > ? / \ |`), file already exists, empty paths
 
-**Validation Errors**: These occur when input doesn't meet requirements
-- Invalid folder names (contains special characters: * : < > ? / \ |)
-- File already exists at destination
-- Empty or invalid paths
+Each error message includes a clear explanation and specific steps to resolve the issue.
 
-Each error message includes:
-- A clear explanation of what went wrong
-- Specific steps to resolve the issue
-- Suggestions for alternative actions
+### Additional Resources
 
-### Getting Help
-
-1. **Read the error message carefully** - It contains specific guidance on how to resolve the issue
-2. Review the [Authentication](pages/Authentication.md) guide for connection issues
-3. Check [Extension Configuration](pages/ExtensionConfiguration.md) for setup problems
-4. See individual catalog request pages for operation-specific troubleshooting
-5. Refer to [Microsoft Graph API Documentation](https://docs.microsoft.com/en-us/graph/api/resources/onedrive) for API
-  details
-
-### Release Notes
-
-For version history and changes, see [Release Notes](pages/release_notes.md).
+- [Authentication Tab Guide](pages/Authentication.md) - Detailed auth setup for all three modes
+- [Release Notes](pages/release_notes.md) - Version history and changes
+- [Microsoft Graph API Documentation](https://docs.microsoft.com/en-us/graph/api/resources/onedrive) - API reference
 
 ---
 
@@ -175,19 +184,17 @@ The OneDrive Files extension provides 20+ catalog requests organized into three 
 
 Configuration and health monitoring operations
 
-### Management Area (16 requests)
+### Management Area (19 requests)
 
 File and folder management operations
 
 ### OneDrive Area (2 requests)
 
-Advanced OneDrive-specific operations
+Advanced OneDrive-specific operations including permission search and custom file name uploads
 
 For detailed information about each catalog request, click on the links in
 the [Documentation Structure](#documentation-structure) section above.
 
 ---
 
-**Ready to get started?** Begin with [Extension Configuration](pages/ExtensionConfiguration.md) to set up your OneDrive
-connection.
-
+**Ready to get started?** Open the **Authentication** tab in the extension to configure your OneDrive connection.

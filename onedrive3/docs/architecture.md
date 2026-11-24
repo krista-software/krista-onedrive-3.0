@@ -1,7 +1,7 @@
 # Microsoft OneDrive Extension - Architecture Documentation
 
-**Version:** 3.0.7
-**Last Updated:** 2025-11-14
+**Version:** 3.0.9
+**Last Updated:** 2026-04-20
 **Domain:** Cloud Files (Essentials Ecosystem)
 
 ---

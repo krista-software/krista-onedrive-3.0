@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl.stores;
@@ -21,6 +21,8 @@ package app.krista.extensions.essentials.cloudfiles.onedrive.impl.stores;
 import app.krista.ksdk.files.FileHandle;
 import app.krista.ksdk.files.FileRepository;
 import org.jvnet.hk2.annotations.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import java.io.*;
@@ -32,6 +34,7 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class KristaMediaClient {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(KristaMediaClient.class);
     private static final String zipDir = "/tmp/";
     @Inject
     private FileRepository fileRepository;
@@ -81,7 +84,13 @@ public class KristaMediaClient {
      */
     private boolean isUnsupportedFileFormat(String fileName) {
         String fileExtension = getFileExtension(fileName);
-        return fileRepository.getBlackListedFileExtensions().contains(fileExtension);
+        try {
+            return fileRepository.getBlackListedFileExtensions().contains(fileExtension);
+        } catch (Exception e) {
+            LOGGER.warn("isUnsupportedFileFormat - getBlackListedFileExtensions() threw {} (message={}), falling back to local list",
+                    e.getClass().getSimpleName(), e.getMessage());
+            return unSupportedFileFormats.contains(fileExtension);
+        }
     }
 
     /**

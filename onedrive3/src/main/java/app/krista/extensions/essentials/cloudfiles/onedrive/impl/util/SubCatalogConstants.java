@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl.util;
@@ -51,7 +51,7 @@ public final class SubCatalogConstants {
     public static final String CONFIRM_REENTER_TARGET_FILE_WRITE_Custom_Name = "confirmReEnterTargetFileWriteCustomName";
     public static final String HANDLE_REENTER_TARGET_FILE_WRITE_Custom_Name = "handleReEnterTargetFileWriteCustomName";
 
-    public static final String REENTER = "Reenter";
+    public static final String REENTER = "Re-enter";
 
     private SubCatalogConstants() {
     }

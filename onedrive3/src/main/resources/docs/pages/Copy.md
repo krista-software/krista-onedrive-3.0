@@ -21,6 +21,8 @@ Copies the provided file or folder from the source location to the target locati
 | Replace        | Yes/No | No       | If true, replaces any existing file at the target location (default: false) |
 | Create Folder  | Yes/No | No       | If true, creates any new folders in the target path (default: false)        |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type   | Description                                                                             |

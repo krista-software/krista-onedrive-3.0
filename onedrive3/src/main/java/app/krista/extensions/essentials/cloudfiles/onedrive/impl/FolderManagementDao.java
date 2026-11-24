@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -52,6 +52,7 @@ import java.util.stream.Collectors;
 public class FolderManagementDao {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FolderManagementDao.class);
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final OnedriveAttributes onedriveAttributes;
     private final ValidationTypeUtil validationTypeUtil;
@@ -59,14 +60,23 @@ public class FolderManagementDao {
 
     @Inject
     public FolderManagementDao(GraphServiceClientProviderFactory factory, OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
-        this(factory.create(), onedriveAttributes, validationTypeUtil, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.onedriveAttributes = onedriveAttributes;
+        this.validationTypeUtil = validationTypeUtil;
+        this.telemetryHelper = telemetryHelper;
     }
 
     public FolderManagementDao(GraphServiceClientProvider provider, OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.onedriveAttributes = onedriveAttributes;
         this.validationTypeUtil = validationTypeUtil;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -140,14 +150,14 @@ public class FolderManagementDao {
 
     public void getRootFilesByDriveIDPath(String driveID, String relativePath, List<File> files, boolean useEmail, String accountID, String search, FreeForm payload) {
         try {
-            DriveItem driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+            DriveItem driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                     .drives(driveID)
                     .root()
                     .itemWithPath(relativePath)
                     .buildRequest().expand(Constants.PERMISSIONS).get();
 
             if (driveItem != null && driveItem.id != null && driveItem.folder != null) {
-                DriveItemCollectionPage page = provider.getUserRequestBuilder(useEmail, accountID)
+                DriveItemCollectionPage page = createProvider().getUserRequestBuilder(useEmail, accountID)
                         .drives(driveID)
                         .root()
                         .itemWithPath(relativePath)
@@ -162,7 +172,7 @@ public class FolderManagementDao {
                                 && driveInPage.id != null && driveInPage.folder != null
                                 && driveInPage.name != null && driveInPage.name.contains(search)) {
 
-                            PermissionCollectionPage permissionPage = provider.getUserRequestBuilder(useEmail, accountID)
+                            PermissionCollectionPage permissionPage = createProvider().getUserRequestBuilder(useEmail, accountID)
                                     .drives(driveID)
                                     .items(driveInPage.id)
                                     .permissions()
@@ -171,7 +181,7 @@ public class FolderManagementDao {
                             files.add(new FileImpl(driveInPage, permissionPage, onedriveAttributes));
                         }
                         if (search != null && search.isBlank() && driveInPage.folder != null && driveInPage.id != null) {
-                            PermissionCollectionPage permissionPage = provider.getUserRequestBuilder(useEmail, accountID)
+                            PermissionCollectionPage permissionPage = createProvider().getUserRequestBuilder(useEmail, accountID)
                                     .drives(driveID)
                                     .items(driveInPage.id)
                                     .permissions()
@@ -263,7 +273,7 @@ public class FolderManagementDao {
 
     private void getSharedFolders(String relativePath, List<File> files, String search, boolean useEmail, String accountID, FreeForm payload) {
         try {
-            DriveSharedWithMeCollectionPage page = provider.getUserRequestBuilder(useEmail, accountID)
+            DriveSharedWithMeCollectionPage page = createProvider().getUserRequestBuilder(useEmail, accountID)
                     .drive().
                     sharedWithMe()
                     .buildRequest().top(100000).get();
@@ -280,14 +290,14 @@ public class FolderManagementDao {
 
                         if (relativePath.equals(Constants.FORWARD_SLASH_SHARED) || relativePath.equals(Constants.SHARED)) {
                             if (search != null && !search.isEmpty() && driveInPage.name != null && driveInPage.name.contains(search)) {
-                                DriveItem driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+                                DriveItem driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                                         .drives(driveInPage.remoteItem.parentReference.driveId)
                                         .items(driveInPage.id)
                                         .buildRequest().expand(Constants.PERMISSIONS).get();
                                 files.add(new FileImpl(driveItem, null, onedriveAttributes));
                             }
                             if (search != null && search.isBlank()) {
-                                DriveItem driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+                                DriveItem driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                                         .drives(driveInPage.remoteItem.parentReference.driveId)
                                         .items(driveInPage.id)
                                         .buildRequest().expand(Constants.PERMISSIONS).get();
@@ -317,14 +327,14 @@ public class FolderManagementDao {
 
     @Nullable
     private PermissionCollectionPage getPermissionCollectionPage(boolean useEmail, String accountID, DriveItem driveInPage) {
-        return provider.getUserRequestBuilder(useEmail, accountID)
+        return createProvider().getUserRequestBuilder(useEmail, accountID)
                 .drive().items(Objects.requireNonNull(driveInPage.id))
                 .permissions().buildRequest().get();
     }
 
     @NotNull
     private DriveItemRequestBuilder getRequestBuilder(boolean useEmail, String accountID) {
-        return provider.getUserRequestBuilder(useEmail, accountID).drive().root();
+        return createProvider().getUserRequestBuilder(useEmail, accountID).drive().root();
     }
 
     @Nullable

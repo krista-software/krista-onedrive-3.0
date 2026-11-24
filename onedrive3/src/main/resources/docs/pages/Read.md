@@ -18,6 +18,8 @@ Read the content of a text file as plain text from OneDrive.
 |----------------|------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Source         | Text | Yes      | Full path to the text file to be read (e.g., /Documents/notes.txt or /Folders/MyFolder/config.json). For shared drives, use format driveId:/path/to/file |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type      | Description                                                           |
@@ -142,6 +144,7 @@ Read the content of a text file as plain text from OneDrive.
 **Recommended**:
 
 - .txt (Plain text)
+- .md (Markdown)
 - .json (JSON)
 - .xml (XML)
 - .csv (CSV)

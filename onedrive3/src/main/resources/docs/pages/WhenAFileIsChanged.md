@@ -21,6 +21,8 @@ created, updated, deleted, or shared.
 | Event          | PickOne | No       | Optional filter to only trigger on specific types of changes (Created, Updated, Deleted, Shared). If not specified, all change types will trigger this event |
 | Search         | Text    | No       | Optional regular expression pattern to filter the subfolder names (e.g., Project.* to only show folders starting with "Project")                             |
 
+> 📌 **Root folder path:** To target your OneDrive **root folder**, enter **`drive/root:/`** as the path (leaving the field blank also works). For a subfolder, add it after — e.g. **`drive/root:/Documents`**. For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type         | Description                                                          |

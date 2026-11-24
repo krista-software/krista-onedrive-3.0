@@ -20,6 +20,8 @@ ID for retrieving results.
 | Source Path    | Text | Yes      | Full path to the folder in the cloud storage to list files from (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder |
 | Search         | Text | No       | Optional search pattern to filter files by name (supports wildcards and regular expressions)                                                                                  |
 
+> 📌 **Root folder path:** To target your OneDrive **root folder**, enter **`drive/root:/`** as the path (leaving the field blank also works). For a subfolder, add it after — e.g. **`drive/root:/Documents`**. For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type | Description                                                                                                                     |
@@ -326,21 +328,36 @@ GET /me/drive/root:/{path}:/children
 
 ## Path Format Reference
 
-### Personal Drive Paths
+### Personal OneDrive (your own drive)
 
-- **Root**: `drive/root:/`
-- **Folder**: `drive/root:/Documents`
-- **Subfolder**: `drive/root:/Documents/Projects`
+Use the shorthand format directly — no Get Drives call required:
 
-### Shared Drive Paths
+| Location | Path Format | Example |
+|---|---|---|
+| Root of personal drive | `drive/root:/` | `drive/root:/` |
+| Folder in personal drive | `drive/root:/FolderName` | `drive/root:/Documents` |
+| Subfolder | `drive/root:/Folder/Subfolder` | `drive/root:/Documents/Projects` |
 
-- **Format**: `drives/b!{driveId}/root:/path/to/folder`
-- **Example**: `drives/b!absdbfbbvwevb/root:/TeamFiles`
+> `drive/root:/` (singular `drive`, no drive ID) always refers to the authenticated user's own personal OneDrive.
 
-### Relative Paths (Personal Drive)
+### SharePoint Document Libraries and Shared Drives
 
-- **Folder**: `/Documents`
-- **Subfolder**: `/Documents/Projects`
+For SharePoint document libraries or any shared drive, call **[Get Drives](pages/GetDrives.md)** first to obtain the Drive Path, then use it directly as the Source Path:
+
+| Location | Path Format | Example |
+|---|---|---|
+| Root of a shared drive | `drives/{driveId}/root:/` | `drives/b!abc123XYZ/root:/` |
+| Folder inside a shared drive | `drives/{driveId}/root:/FolderName` | `drives/b!abc123XYZ/root:/TeamFiles` |
+| Subfolder inside a shared drive | `drives/{driveId}/root:/Folder/Subfolder` | `drives/b!abc123XYZ/root:/TeamFiles/2024` |
+
+> Always use the Drive Path exactly as returned by Get Drives. Do not manually construct or guess the `{driveId}` value.
+
+### Quick Reference
+
+| Storage Type | Source Path Example |
+|---|---|
+| Personal OneDrive | `drive/root:/Documents` |
+| SharePoint / Shared Drive | `drives/b!abc123XYZ/root:/TeamFiles` |
 
 ## Performance Considerations
 

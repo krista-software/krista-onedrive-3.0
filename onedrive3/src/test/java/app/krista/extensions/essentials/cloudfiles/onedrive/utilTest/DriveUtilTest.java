@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.utilTest;
@@ -23,7 +23,10 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class DriveUtilTest {
@@ -88,5 +91,52 @@ public class DriveUtilTest {
         Assert.assertTrue(exception.getMessage().contains("Failed to get drive item. Folder name is empty."));
         exception = Assert.assertThrows(IllegalArgumentException.class, () -> DriveUtil.getDriveItemForItem("  "));
         Assert.assertTrue(exception.getMessage().contains("Failed to get drive item. Folder name is empty."));
+    }
+
+    // ========================================
+    // getFileFromInputStream — temp-dir fix
+    // ========================================
+
+    @Test
+    public void testGetFileFromInputStream_ValidStream_WritesToTempDir() throws IOException {
+        String fileName = "driveutil-tempdir-test.txt";
+        byte[] content = "test content for temp dir check".getBytes(StandardCharsets.UTF_8);
+        InputStream stream = new ByteArrayInputStream(content);
+
+        File result = DriveUtil.getFileFromInputStream(stream, fileName);
+
+        try {
+            Assert.assertNotNull("Result file must not be null", result);
+            Assert.assertEquals("File name must match the requested name", fileName, result.getName());
+            Assert.assertTrue("File must exist on disk", result.exists());
+            // Verify the file lives in the system temp directory, not the working directory
+            String expectedTempDir = new File(System.getProperty("java.io.tmpdir")).getCanonicalPath();
+            String actualParentDir = result.getParentFile().getCanonicalPath();
+            Assert.assertEquals("File must be written to system temp dir, not CWD", expectedTempDir, actualParentDir);
+        } finally {
+            if (result != null && result.exists()) {
+                result.delete();
+            }
+        }
+    }
+
+    @Test
+    public void testGetFileFromInputStream_EmptyStream_CreatesEmptyFileInTempDir() throws IOException {
+        String fileName = "driveutil-empty-stream-test.bin";
+        InputStream emptyStream = new ByteArrayInputStream(new byte[0]);
+
+        File result = DriveUtil.getFileFromInputStream(emptyStream, fileName);
+
+        try {
+            Assert.assertNotNull("Result file must not be null for empty stream", result);
+            Assert.assertEquals("File name must match", fileName, result.getName());
+            String expectedTempDir = new File(System.getProperty("java.io.tmpdir")).getCanonicalPath();
+            String actualParentDir = result.getParentFile().getCanonicalPath();
+            Assert.assertEquals("Empty-stream file must also be in temp dir", expectedTempDir, actualParentDir);
+        } finally {
+            if (result != null && result.exists()) {
+                result.delete();
+            }
+        }
     }
 }

@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -56,27 +56,28 @@ public class PermissionDao {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PermissionDao.class);
 
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final OnedriveAttributes onedriveAttributes;
     private final TelemetryHelper telemetryHelper;
 
     @Inject
     public PermissionDao(GraphServiceClientProviderFactory factory, OnedriveAttributes onedriveAttributes, TelemetryHelper telemetryHelper) {
-        this(factory.create(), onedriveAttributes, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.onedriveAttributes = onedriveAttributes;
+        this.telemetryHelper = telemetryHelper;
     }
 
-    /**
-     * Constructs a PermissionDao with explicit dependencies.
-     * This constructor is primarily used for testing or when manual instantiation is required.
-     *
-     * @param provider           The provider for Microsoft Graph API client
-     * @param onedriveAttributes The OneDrive attributes containing user configuration
-     * @param telemetryHelper    Helper for recording telemetry data
-     */
     public PermissionDao(GraphServiceClientProvider provider, OnedriveAttributes onedriveAttributes, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.onedriveAttributes = onedriveAttributes;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -203,7 +204,7 @@ public class PermissionDao {
      * @param files       The list to add matching files to
      */
     private void iterateDriveItemWithPermission(String permission, DriveItem driveInPage, boolean useEmail, String accountID, List<File> files) {
-        PermissionCollectionPage permissionCollectionPage = provider.getUserRequestBuilder(useEmail, accountID).drive().items(driveInPage.id).permissions().buildRequest().get();
+        PermissionCollectionPage permissionCollectionPage = createProvider().getUserRequestBuilder(useEmail, accountID).drive().items(driveInPage.id).permissions().buildRequest().get();
         while (permissionCollectionPage != null && !permissionCollectionPage.getCurrentPage().isEmpty()) {
             for (Permission permissionPage : permissionCollectionPage.getCurrentPage()) {
                 String role = permission.equals(Constants.OWN) ? "owner" : permission;

@@ -21,6 +21,8 @@ custom file name.
 | Custom Name    | Text | No       | Optional custom name to use for the uploaded file instead of the original filename. Include file extension (e.g., report.pdf)              |
 | Krista File    | File | Yes      | The file to be uploaded to OneDrive. Supports files up to 50 MB in size                                                                    |
 
+> 📌 **Root folder path:** To target your OneDrive **root folder**, enter **`drive/root:/`** as the path (leaving the field blank also works). For a subfolder, add it after — e.g. **`drive/root:/Documents`**. For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type         | Description                                                                  |

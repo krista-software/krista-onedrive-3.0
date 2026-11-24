@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl.util;
@@ -48,7 +48,7 @@ public class Constants {
     public static final String INVALID_STATE_PARAMETERS = "We couldn't verify the request parameters. Please try your request again from the beginning.";
     public static final String WS_CONTACT = "wsContact";
     public static final String IGNORED_EXCEPTION = "IGNORED EXCEPTION";
-    public static final String INVALID_FILE_NAME_OR_INVALID_FILE_EXTENSION = "This file type isn't supported. Please use a .txt file instead.";
+    public static final String INVALID_FILE_NAME_OR_INVALID_FILE_EXTENSION = "This file type isn't supported. Please use a .txt or .md file instead.";
     public static final String EMPTY_STRING = "";
     public static final String NUMBER = "Number";
     public static final String DATE = "Date";
@@ -107,6 +107,7 @@ public class Constants {
     public static final String ITEM_NOT_FOUND = "itemNotFound";
     public static final String UNAUTHORISED_USER = "You're not authorized to access this resource. Please sign in with an authorized account.";
     public static final String USER_AUTHENTICATED_SUCCESSFULLY_SAVE_THE_CHANGES = "You're successfully authenticated! Please save your changes to complete the setup.";
+    public static final String REFRESH_TOKEN_NOT_RECEIVED = "Authentication completed, but Microsoft did not return a refresh token. Please retry sign-in and select the account again.";
     public static final String ERROR_OCCURRED_DURING_AUTHORIZATION = "We encountered an issue during authorization. Please try signing in again.";
     public static final String ERROR_DESCRIPTION = "error_description";
     public static final String AUTH_URL_QUERY_PARAMS = "&access_type=offline&approval_prompt=force&prompt=login";
@@ -124,6 +125,8 @@ public class Constants {
     public static final String AUTHORITY = "https://login.microsoftonline.com/";
     public static final String USER_ID = "userId";
     public static final String AUTH_CONTEXT_ID = "authContextId";
+    public static final String CLIENT_USER_ID = "clientUserId";
+    public static final String INVOKER_PREFIX = "INV_";
     public static final String YOU_ARE_NOT_AUTHORIZED_PLEASE_AUTHORIZE_YOURSELF = "You're not currently authorized. Please sign in to your Microsoft account to continue.";
     public static final String REFRESH_TOKEN_IS_NO_LONGER_VALID_PLEASE_REAUTHORIZE_YOURSELF = "Your session has expired. Please sign in again to continue using OneDrive.";
     public static final String FAILED_TO_GET_ACCOUNT = "We couldn't retrieve your account information. Please try signing in again.";
@@ -160,6 +163,25 @@ public class Constants {
     public static final String TELEMETRY_ERROR_GRAPH_SERVICE_EXCEPTION = "graph_service_exception";
     public static final String TELEMETRY_ERROR_UNEXPECTED_EXCEPTION = "unexpected_exception";
     public static final String IS_FROM_CATALOG_REQUEST = "isFromCatalogRequest";
+
+    // OAuth Flow Constants
+    public static final String PUBLIC = "Public";
+    public static final String PRIVATE = "Private";
+    public static final String AUTH_TYPE = "authType";
+    public static final String AUTHORIZATION_PROMPT = "Please complete the authorization process and click 'Validate Attributes' before saving your changes.";
+    public static final String UNSUPPORTED_AUTH = "Invalid authentication type. Please choose either 'Public' or 'Private' authentication mode.";
+    public static final String LOCAL_EXTN_URL = "https://extension.local.eng.krista.app";
+    public static final String LOCAL_EXTN_REPLACE_URL = "http://localhost:8765";
+    public static final String DEFAULT_CALLBACK_PATH = "/extension/api/rest/v3/oauth/callback";
+    public static final String EXTENSION_FORWARD_PATH = "/rest/onedrive/callback";
+    public static final String ORG_AUTHORITY = "https://login.microsoftonline.com/organizations/";
+    public static final String UNDER_SCORE = "_";
+    public static final String CLIENT_CREDENTIAL_SCOPES = "https://graph.microsoft.com/.default";
+
+    // Certificate-based client credentials auth
+    public static final String CLIENT_CREDENTIALS_CERT = "ClientCredentialsCert";
+    public static final String CERTIFICATE_CONTENT = "certificateContent";
+    public static final String CERTIFICATE_PASSWORD = "certificatePassword";
 
     private Constants() {
     }

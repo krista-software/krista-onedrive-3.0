@@ -19,6 +19,8 @@ Move a file or folder on the drive from source to target where both denote a ful
 | Source         | Text | Yes      | Full path to the source file or folder to be moved (e.g., /Documents/file.txt or /Folders/MyFolder). For shared drives, use format driveId:/path/to/file             |
 | Target         | Text | Yes      | Full path where the file or folder should be moved to (e.g., /Documents/NewLocation or /Folders/Archive). For shared drives, use format driveId:/path/to/destination |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type         | Description                                                                     |

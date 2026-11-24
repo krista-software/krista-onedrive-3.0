@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive;
@@ -22,11 +22,14 @@ import app.krista.extension.executor.ExtensionResponse;
 import app.krista.extension.executor.ExtensionResponseBuilder;
 import app.krista.extensions.essentials.cloudfiles.onedrive.catalog.entities.ExtensionResponseMeta;
 import app.krista.extensions.essentials.cloudfiles.onedrive.catalog.entities.HealthStatus;
+import app.krista.extensions.essentials.cloudfiles.onedrive.dao.SubscriptionDao;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.OnedriveSubscription;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.connectors.GraphServiceClientProvider;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.connectors.GraphServiceClientProviderFactory;
+import app.krista.extensions.essentials.cloudfiles.onedrive.impl.stores.SubscriptionStorageStore;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.FileChangeResourceUtil;
 import app.krista.ksdk.telemetry.TelemetryMetrics;
+import com.microsoft.graph.models.Subscription;
 import com.microsoft.graph.requests.DriveItemDeltaCollectionPage;
 import org.jvnet.hk2.annotations.Service;
 import org.slf4j.Logger;
@@ -77,69 +80,21 @@ public class OnedriveSetUpService {
     private final ContextService contextService;
     private final OnedriveAttributes onedriveAttributes;
     private final GraphServiceClientProviderFactory clientProviderFactory;
-    private final OnedriveRequestAuthenticator requestAuthenticator;
-    private final OnedriveSubscription onedriveSubscription;
+    private final SubscriptionStorageStore subscriptionStorageStore;
     private final TelemetryMetrics telemetryMetrics;
 
     public static final Instant START_TIME = Instant.now();
 
     @Inject
-    public OnedriveSetUpService(ContextService contextService, OnedriveAttributes onedriveAttributes, GraphServiceClientProviderFactory clientProviderFactory, OnedriveRequestAuthenticator requestAuthenticator, OnedriveSubscription onedriveSubscription, TelemetryMetrics telemetryMetrics) {
+    public OnedriveSetUpService(ContextService contextService, OnedriveAttributes onedriveAttributes,
+                                GraphServiceClientProviderFactory clientProviderFactory,
+                                SubscriptionStorageStore subscriptionStorageStore,
+                                TelemetryMetrics telemetryMetrics) {
         this.contextService = contextService;
         this.onedriveAttributes = onedriveAttributes;
         this.clientProviderFactory = clientProviderFactory;
-        this.requestAuthenticator = requestAuthenticator;
-        this.onedriveSubscription = onedriveSubscription;
+        this.subscriptionStorageStore = subscriptionStorageStore;
         this.telemetryMetrics = telemetryMetrics;
-    }
-
-    /**
-     * Validates OneDrive connection from server side using admin credentials.
-     * Creates subscription and initializes file metadata if connection is valid.
-     *
-     * @param connectionAttributes map containing connection configuration parameters
-     * @throws RuntimeException if connection validation fails
-     */
-    public void validateConnection(Map<String, Object> connectionAttributes) {
-        String routingUrl = contextService.getRoutingUrl();
-        OnedriveAttributes attributes = OnedriveAttributes.create(routingUrl, connectionAttributes);
-        if (attributes.getMailId() != null && !attributes.getMailId().isBlank()) {
-            GraphServiceClientProvider graphServiceClientProvider = clientProviderFactory.create(attributes);
-            DriveItemDeltaCollectionPage page = graphServiceClientProvider
-                    .getGraphServiceClientForAdmin().me()
-                    .drive().root().delta().buildRequest().get();
-            OnedriveSubscription.createSubscription(routingUrl, graphServiceClientProvider);
-            FileChangeResourceUtil.addFileMetaData(routingUrl, page);
-        }
-    }
-
-    /**
-     * Validates OneDrive connection from client side using user credentials.
-     * Creates subscription and initializes file metadata if connection is valid.
-     *
-     * @param connectionAttributes map containing connection configuration parameters
-     * @return true if connection is valid and setup successful, false otherwise
-     * @throws RuntimeException if IOException occurs during validation
-     */
-    public boolean validateConnectionFromClientSide(Map<String, Object> connectionAttributes) {
-        String routingUrl = contextService.getRoutingUrl();
-        String accountId = contextService.getAccountId();
-        OnedriveAttributes attributes = OnedriveAttributes.create(routingUrl, connectionAttributes);
-        if (attributes.getMailId() != null && !attributes.getMailId().isBlank()) {
-            try {
-                GraphServiceClientProvider graphServiceClientProvider = clientProviderFactory.create(attributes);
-                DriveItemDeltaCollectionPage page = graphServiceClientProvider
-                        .getGraphServiceClientForUser(false, accountId).me()
-                        .drive().root().delta().buildRequest().get();
-
-                onedriveSubscription.createSubscriptionFromClientSide(routingUrl, graphServiceClientProvider);
-                FileChangeResourceUtil.addFileMetaData(routingUrl, page);
-                return true;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        return false;
     }
 
     /**
@@ -165,6 +120,18 @@ public class OnedriveSetUpService {
     }
 
     /**
+     * Verifies that the current invoker has delegated OneDrive access before a user-scoped tool runs.
+     * Always uses useEmail=false because this is called only in MCP/invokeAsUser context where
+     * the accountId is a wsContact ID, not an email address.
+     */
+    public void verifyUserAuthorization() throws IOException {
+        String accountId = contextService.getAccountId();
+        clientProviderFactory.create(onedriveAttributes)
+                .getGraphServiceClientForUser(false, accountId)
+                .me().buildRequest().get();
+    }
+
+    /**
      * Updates OneDrive attributes when configuration changes occur.
      *
      * @param oldAttributes previous attribute values (not currently used)
@@ -175,21 +142,48 @@ public class OnedriveSetUpService {
     }
 
     /**
-     * Gets the request authenticator for OneDrive API calls.
-     *
-     * @return the configured OnedriveRequestAuthenticator instance
-     */
-    public OnedriveRequestAuthenticator getRequestAuthenticator() {
-        return requestAuthenticator;
-    }
-
-    /**
      * Gets the current OneDrive attributes configuration.
      *
      * @return the configured OnedriveAttributes instance
      */
     public OnedriveAttributes getOnedriveAttributes() {
         return onedriveAttributes;
+    }
+
+    /**
+     * Creates a subscription and initializes file metadata using an already-authenticated provider.
+     * Used when a valid token is already cached (e.g. after saveCredentials in the auth tab).
+     *
+     * @param provider authenticated GraphServiceClientProvider
+     */
+    public void initializeSubscriptionWithProvider(GraphServiceClientProvider provider) {
+        String routingUrl = contextService.getRoutingUrl();
+        DriveItemDeltaCollectionPage page = provider.getGraphServiceClientForAdmin().me()
+                .drive().root().delta().buildRequest().get();
+        Subscription createdSubscription = OnedriveSubscription.createSubscription(routingUrl, provider);
+        if (createdSubscription != null) {
+            LOGGER.info("Subscription created successfully during auth-tab save - subscriptionId: {}", createdSubscription.id);
+        } else {
+            LOGGER.info("Subscription already exists, skipping creation during auth-tab save");
+        }
+        storeSubscriptionMetadata(routingUrl, createdSubscription);
+        FileChangeResourceUtil.addFileMetaData(routingUrl, page);
+    }
+
+    /**
+     * Stores subscription metadata in the SubscriptionStorageStore for tracking and cleanup.
+     *
+     * @param routingUrl   the routing URL used as the path key
+     * @param subscription the created subscription (may be null if already subscribed)
+     */
+    private void storeSubscriptionMetadata(String routingUrl, Subscription subscription) {
+        if (subscription != null && subscription.id != null) {
+            long expirationTimestamp = OnedriveSubscription.calculateExpirationTimestamp();
+            SubscriptionDao subscriptionDao = SubscriptionDao.create(subscription.id, null, null, expirationTimestamp);
+            subscriptionStorageStore.addFileMetaData(subscription.id, subscriptionDao);
+            subscriptionStorageStore.addSubscriptionID(routingUrl, subscription.id);
+            LOGGER.info("Stored subscription {} with expiration timestamp: {}", subscription.id, expirationTimestamp);
+        }
     }
 
     /**

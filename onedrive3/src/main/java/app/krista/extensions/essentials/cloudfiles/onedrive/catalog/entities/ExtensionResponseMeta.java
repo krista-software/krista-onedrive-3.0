@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.catalog.entities;
@@ -28,7 +28,7 @@ import app.krista.extension.impl.anno.*;
 @Entity(name = "Extension Response Meta", id = "localDomainEntity_96b1e509-7c0c-46e5-b12f-33d2560c0fcb", primaryKey = "Message", supportStore = false)
 public class ExtensionResponseMeta {
 
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     public String message;
 
     @Field(name = "Technical Detailed Error Report", type = "RichText", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})

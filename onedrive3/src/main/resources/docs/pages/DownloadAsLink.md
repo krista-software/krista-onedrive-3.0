@@ -18,6 +18,8 @@ Retrieves a file from OneDrive and provides a temporary download link that can b
 |----------------|------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Source         | Text | Yes      | Full path to the file in the cloud storage (e.g., /Documents/file.pdf or /Sites/TeamSite/Shared Documents/report.xlsx). For shared drives, use format driveId:/path/to/file |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type      | Description                                                           |

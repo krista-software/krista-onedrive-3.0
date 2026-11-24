@@ -16,8 +16,11 @@ Accept folder name and path as input and create a new folder at the specified lo
 
 | Parameter Name | Type | Required | Description                                                                                |
 |----------------|------|----------|--------------------------------------------------------------------------------------------|
-| Folder Name    | Text | Yes      | The name for the new folder. This should not include path separators                       |
-| Path           | Text | Yes      | The full path where the new folder should be created. The parent folder must already exist |
+| Folder Name    | Text    | Yes      | The name for the new folder. This should not include path separators                       |
+| Path           | Text    | Yes      | The full path where the new folder should be created. The parent folder must already exist |
+| Allow Retry    | Yes/No  | No       | Enable to allow re-entry of values if validation fails. When off, a validation failure returns a direct error instead of prompting for re-entry |
+
+> 📌 **Root folder path:** To create the folder directly in your OneDrive **root folder**, use **`drive/root:/`** — e.g. **`drive/root:/NewFolder`**. For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
 
 ## Output Parameters
 

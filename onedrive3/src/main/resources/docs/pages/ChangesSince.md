@@ -2,59 +2,66 @@
 
 ## Overview
 
-Produces a list of recent updates within a specified folder since a given date, including information about the path, file status (Created, Updated, Deleted), and can be filtered using an optional regex search pattern.
+Produces a list of recent updates within a specified folder since a given date, including information about the path,
+file status (Created, Updated, Deleted), and can be filtered using an optional regex search pattern.
 
 ## Request Details
 
-| Property | Value |
-|----------|-------|
-| **Area** | Management |
-| **Type** | CHANGE_SYSTEM |
-| **Retry Support** | No |
+| Property          | Value         |
+|-------------------|---------------|
+| **Area**          | Management    |
+| **Type**          | CHANGE_SYSTEM |
+| **Retry Support** | No            |
 
 ## Input Parameters
 
-| Parameter Name | Type | Required | Description |
-|---------------|------|----------|-------------|
-| Source Path | Text | Yes | Full path to the folder or location in the cloud storage that you want to monitor for changes (e.g., /Documents or /Sites/TeamSite/Shared Documents) |
-| Search | Text | No | Optional regular expression pattern to filter the subfolder names (e.g., Project.* to only show folders starting with "Project") |
-| Since | Date | Yes | The starting date and time from which to retrieve changes. Only changes that occurred after this timestamp will be included |
+| Parameter Name | Type | Required | Description                                                                                                                                          |
+|----------------|------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Source Path    | Text | Yes      | Full path to the folder or location in the cloud storage that you want to monitor for changes (e.g., /Documents or /Sites/TeamSite/Shared Documents) |
+| Search         | Text | No       | Optional regular expression pattern to filter the subfolder names (e.g., Project.* to only show folders starting with "Project")                     |
+| Since          | Date | Yes      | The starting date and time from which to retrieve changes. Only changes that occurred after this timestamp will be included                          |
+
+> 📌 **Root folder path:** To target your OneDrive **root folder**, enter **`drive/root:/`** as the path (leaving the
 
 ## Output Parameters
 
-| Parameter Name | Type | Description |
-|---------------|------|-------------|
-| Result | List | List of change records. Each entry contains: Path (Text), Date (Date), Update (Created, Updated, or Deleted) |
-| Success | Yes/No | Indicates whether the change history was successfully retrieved |
-| Message | Text | Provides details about the operation result or any errors encountered |
+| Parameter Name | Type   | Description                                                                                                  |
+|----------------|--------|--------------------------------------------------------------------------------------------------------------|
+| Result         | List   | List of change records. Each entry contains: Path (Text), Date (Date), Update (Created, Updated, or Deleted) |
+| Success        | Yes/No | Indicates whether the change history was successfully retrieved                                              |
+| Message        | Text   | Provides details about the operation result or any errors encountered                                        |
 
 ## Validation Rules
 
-| Field | Validation Rule | Error Message |
-|-------|----------------|---------------|
-| Source Path | Must not be empty | "Source path is required" |
-| Since | Must not be empty | "Since date is required" |
-| Since | Must be in the past | "Since date must be in the past" |
-| Source Path | Folder must exist | "Source folder not found" |
+| Field       | Validation Rule     | Error Message                    |
+|-------------|---------------------|----------------------------------|
+| Source Path | Must not be empty   | "Source path is required"        |
+| Since       | Must not be empty   | "Since date is required"         |
+| Since       | Must be in the past | "Since date must be in the past" |
+| Source Path | Folder must exist   | "Source folder not found"        |
 
 ## Error Handling
 
 ### INPUT_ERROR
+
 **When it occurs**: Invalid input parameters
 **Common scenarios**: Empty source path, empty since date, future date, invalid regex
 **Response**: `{"Success": false, "Message": "Invalid input: Source path is required", "Result": []}`
 
 ### LOGIC_ERROR
+
 **When it occurs**: Business logic violations
 **Common scenarios**: Source folder not found, invalid date range
 **Response**: `{"Success": false, "Message": "Source folder not found", "Result": []}`
 
 ### SYSTEM_ERROR
+
 **When it occurs**: System-level failures
 **Common scenarios**: Network issues, Microsoft Graph API unavailable, timeout
 **Response**: `{"Success": false, "Message": "Failed to retrieve changes: [error details]", "Result": []}`
 
 ### Authorization Errors
+
 **When it occurs**: Permission issues
 **Common scenarios**: User does not have read permission on folder
 **Response**: `{"Success": false, "Message": "Insufficient permissions to access folder", "Result": []}`
@@ -62,8 +69,10 @@ Produces a list of recent updates within a specified folder since a given date, 
 ## Usage Examples
 
 ### Example 1: Get All Changes Since Date
+
 **Input**: `Source Path: drive/root:/Documents, Search: , Since: 2024-10-01`
-**Output**: 
+**Output**:
+
 ```
 Success: Yes
 Message: Changes retrieved successfully
@@ -75,8 +84,10 @@ Result: [
 ```
 
 ### Example 2: Filter Changes by Pattern
+
 **Input**: `Source Path: drive/root:/Projects, Search: Project.*, Since: 2024-09-01`
 **Output**:
+
 ```
 Success: Yes
 Message: Changes retrieved successfully
@@ -87,6 +98,7 @@ Result: [
 ```
 
 ### Example 3: No Changes Found
+
 **Input**: `Source Path: drive/root:/Archive, Search: , Since: 2024-10-01`
 **Output**: `Success: Yes, Message: No changes found, Result: []`
 
@@ -133,33 +145,35 @@ Result: [
 ## Technical Implementation
 
 **Helper Classes**: ManagementDaoImpl, FileUtil
-**Telemetry Metrics**: `onedrive.management.changes_since.success`, `onedrive.management.changes_since.failure`, `onedrive.management.changes_since.duration`
+**Telemetry Metrics**: `onedrive.management.changes_since.success`, `onedrive.management.changes_since.failure`,
+`onedrive.management.changes_since.duration`
 **API Endpoint**: `GET /me/drive/root:/{path}:/delta`
 
 ## Change Types
 
-| Update Type | Description | Example |
-|------------|-------------|---------|
-| **Created** | New file or folder added | New document uploaded |
-| **Updated** | Existing file modified | Document edited and saved |
-| **Deleted** | File or folder removed | File moved to recycle bin |
+| Update Type | Description              | Example                   |
+|-------------|--------------------------|---------------------------|
+| **Created** | New file or folder added | New document uploaded     |
+| **Updated** | Existing file modified   | Document edited and saved |
+| **Deleted** | File or folder removed   | File moved to recycle bin |
 
 ## Troubleshooting
 
 **Issue: "Source folder not found"** - Verify folder path exists, check for typos
 **Issue: "Since date must be in the past"** - Use past date, not future or today
-**Issue: No changes found but changes occurred** - Check date range, verify search pattern, ensure changes within 60 days
+**Issue: No changes found but changes occurred** - Check date range, verify search pattern, ensure changes within 60
+days
 **Issue: Too many results** - Use search filter, narrow date range, process in batches
 
 ## Date Range Recommendations
 
-| Range | Use Case | Performance |
-|-------|----------|-------------|
-| Last 24 hours | Recent activity | Excellent |
-| Last 7 days | Weekly reports | Good |
-| Last 30 days | Monthly audits | Moderate |
-| Last 60 days | Quarterly reviews | Slower |
-| > 60 days | May not be available | N/A |
+| Range         | Use Case             | Performance |
+|---------------|----------------------|-------------|
+| Last 24 hours | Recent activity      | Excellent   |
+| Last 7 days   | Weekly reports       | Good        |
+| Last 30 days  | Monthly audits       | Moderate    |
+| Last 60 days  | Quarterly reviews    | Slower      |
+| > 60 days     | May not be available | N/A         |
 
 ## See Also
 

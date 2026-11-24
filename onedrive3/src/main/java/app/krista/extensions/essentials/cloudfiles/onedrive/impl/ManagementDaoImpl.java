@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -236,9 +236,13 @@ public class ManagementDaoImpl {
      * @throws IllegalArgumentException If an error occurs during the operation
      */
     public ExtensionResponse copyFile(String source, String target, Boolean replace, Boolean createFolder, Boolean allowRetry) {
-        LOGGER.info("ManagementDaoImpl.copyFile - Starting file copy operation, allowRetry: {}", allowRetry);
+        return copyFile(source, target, replace, createFolder, allowRetry, null);
+    }
+
+    public ExtensionResponse copyFile(String source, String target, Boolean replace, Boolean createFolder, Boolean allowRetry, String targetFileName) {
+        LOGGER.info("ManagementDaoImpl.copyFile - Starting file copy operation, allowRetry: {}, targetFileName: {}", allowRetry, targetFileName);
         try {
-            ExtensionResponse response = copyFileDao.copyFile(source, target, replace, createFolder, false, false, allowRetry);
+            ExtensionResponse response = copyFileDao.copyFile(source, target, replace, createFolder, false, false, allowRetry, targetFileName);
             LOGGER.info("ManagementDaoImpl.copyFile - File copy operation completed successfully");
             return response;
         } catch (GraphServiceException cause) {
@@ -344,8 +348,39 @@ public class ManagementDaoImpl {
      * @throws IllegalArgumentException If an error occurs during the operation
      */
     public ExtensionResponse createFolder(String folderName, String path) {
+        // Backward-compatible overload: retry prompts enabled by default.
+        return createFolder(folderName, path, true);
+    }
+
+    /**
+     * Creates a new folder with control over re-entry (retry) behavior.
+     *
+     * @param folderName The name of the folder to create
+     * @param path       The path where the folder should be created
+     * @param allowRetry When {@code true}, validation failures prompt the user to
+     *                   re-enter values; when {@code false}, a direct error is returned.
+     * @return ExtensionResponse containing the result of the operation
+     * @throws IllegalArgumentException If an error occurs during the operation
+     */
+    public ExtensionResponse createFolder(String folderName, String path, Boolean allowRetry) {
         try {
-            return fileManagementDao.createFolder(folderName, path, false, false);
+            return fileManagementDao.createFolder(folderName, path, false, false, allowRetry);
+        } catch (GraphServiceException | IllegalArgumentException cause) {
+            throw new IllegalArgumentException(cause.getMessage(), cause);
+        }
+    }
+
+    /**
+     * Returns a list of drives accessible to the authenticated user.
+     *
+     * @param search    Optional case-insensitive filter on the drive display name.
+     * @param useEmail  {@code true} for Setup-tab/operator credentials; {@code false} for per-user MCP.
+     * @param accountID The account identifier for authentication.
+     * @return ExtensionResponse containing the drive list, Success flag, and Message.
+     */
+    public ExtensionResponse getDrives(String search, boolean useEmail, String accountID) {
+        try {
+            return fileManagementDao.getListOfDrives(search, useEmail, accountID);
         } catch (GraphServiceException | IllegalArgumentException cause) {
             throw new IllegalArgumentException(cause.getMessage(), cause);
         }

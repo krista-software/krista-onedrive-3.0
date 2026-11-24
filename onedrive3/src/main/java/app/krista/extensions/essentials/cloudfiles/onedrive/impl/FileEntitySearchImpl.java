@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -52,29 +52,25 @@ import java.util.stream.Collectors;
 public class FileEntitySearchImpl {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FileEntitySearchImpl.class);
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final OnedriveAttributes onedriveAttributes;
 
-    /**
-     * Constructs a FileEntitySearchImpl with factory-created provider.
-     *
-     * @param factory            Factory to create the GraphServiceClientProvider
-     * @param onedriveAttributes Attributes for OneDrive configuration
-     */
     @Inject
     public FileEntitySearchImpl(GraphServiceClientProviderFactory factory, OnedriveAttributes onedriveAttributes) {
-        this(factory.create(), onedriveAttributes);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.onedriveAttributes = onedriveAttributes;
     }
 
-    /**
-     * Constructs a FileEntitySearchImpl with the specified provider and attributes.
-     *
-     * @param provider           The GraphServiceClientProvider for Microsoft Graph API calls
-     * @param onedriveAttributes Attributes for OneDrive configuration
-     */
     public FileEntitySearchImpl(GraphServiceClientProvider provider, OnedriveAttributes onedriveAttributes) {
+        this.providerFactory = null;
         this.provider = provider;
         this.onedriveAttributes = onedriveAttributes;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -313,8 +309,8 @@ public class FileEntitySearchImpl {
                 String relativePath = parentFolder.contains(Constants.DRIVE_ROOT) ? parentFolder.replace(Constants.DRIVE_ROOT, "/") : parentFolder;
                 boolean isRoot = isOnlyRootParentPath(parentFolder);
                 DriveItem driveItem = isRoot
-                        ? FileUtil.getRootUserRequestBuilder(provider).buildRequest().get()
-                        : FileUtil.getRootUserRequestBuilder(provider).itemWithPath(relativePath).buildRequest().get();
+                        ? FileUtil.getRootUserRequestBuilder(createProvider()).buildRequest().get()
+                        : FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(relativePath).buildRequest().get();
                 if (driveItem != null && driveItem.folder != null) {
                     getDriveItemCollectionPageByPath(isRoot ? "/" : relativePath, files);
                     return files;
@@ -493,7 +489,7 @@ public class FileEntitySearchImpl {
      * @return UserRequestBuilder for API requests
      */
     private UserRequestBuilder getUserRequestBuilder() {
-        return provider.getUserRequestBuilder(null, null);
+        return createProvider().getUserRequestBuilder(null, null);
     }
 
     /**

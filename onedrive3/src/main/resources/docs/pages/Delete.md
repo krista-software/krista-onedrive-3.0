@@ -18,6 +18,8 @@ Removes a file or folder from OneDrive using the exact file path.
 |----------------|------|----------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Target         | Text | Yes      | Full path to the file to be deleted (e.g., /Documents/file.txt or /Folders/MyFolder). For shared drives, use format driveId:/path/to/file |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type   | Description                                   |

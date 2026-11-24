@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -37,11 +37,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * Handles file change events in OneDrive by tracking and processing delta changes.
@@ -52,18 +50,26 @@ import java.util.stream.Collectors;
 public class FileChangeInfoHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FileChangeInfoHandler.class);
-    private final GraphServiceClientProvider provider;
+    private final GraphServiceClientProviderFactory factory;
+    private volatile GraphServiceClientProvider provider;
     private final String routingUrl;
 
     /**
      * Constructs a FileChangeInfoHandler with factory-created provider.
+     * The GraphServiceClientProvider is created lazily on first use to avoid
+     * MustAuthorizeException during DI construction when no credentials are configured.
      *
      * @param factory Factory to create the GraphServiceClientProvider
      * @param invoker Invoker for routing information
      */
     @Inject
     public FileChangeInfoHandler(GraphServiceClientProviderFactory factory, Invoker invoker) {
-        this(factory.create(), invoker);
+        this.factory = factory;
+        this.provider = null;
+        String rawUrl = invoker.getRoutingInfo().getRoutingURL(HttpProtocol.PROTOCOL_NAME, RoutingInfo.Type.APPLIANCE);
+        this.routingUrl = rawUrl.contains("https://extension.local.eng.krista.app")
+                ? rawUrl.replace("https://extension.local.eng.krista.app", "http://localhost:8765")
+                : rawUrl;
     }
 
     /**
@@ -74,8 +80,23 @@ public class FileChangeInfoHandler {
      * @param invoker  Invoker containing routing information
      */
     public FileChangeInfoHandler(GraphServiceClientProvider provider, Invoker invoker) {
+        this.factory = null;
         this.provider = provider;
-        this.routingUrl = invoker.getRoutingInfo().getRoutingURL(HttpProtocol.PROTOCOL_NAME, RoutingInfo.Type.APPLIANCE).contains("https://extension.local.eng.krista.app") ? invoker.getRoutingInfo().getRoutingURL(HttpProtocol.PROTOCOL_NAME, RoutingInfo.Type.APPLIANCE).replace("https://extension.local.eng.krista.app", "http://localhost:8765") : invoker.getRoutingInfo().getRoutingURL(HttpProtocol.PROTOCOL_NAME, RoutingInfo.Type.APPLIANCE);
+        String rawUrl = invoker.getRoutingInfo().getRoutingURL(HttpProtocol.PROTOCOL_NAME, RoutingInfo.Type.APPLIANCE);
+        this.routingUrl = rawUrl.contains("https://extension.local.eng.krista.app")
+                ? rawUrl.replace("https://extension.local.eng.krista.app", "http://localhost:8765")
+                : rawUrl;
+    }
+
+    private GraphServiceClientProvider getProvider() {
+        if (provider == null) {
+            synchronized (this) {
+                if (provider == null) {
+                    provider = factory.create();
+                }
+            }
+        }
+        return provider;
     }
 
     /**
@@ -108,7 +129,7 @@ public class FileChangeInfoHandler {
      */
     private DriveItemDeltaCollectionPage createFileChangeResource() {
         try {
-            return FileUtil.getRootUserRequestBuilder(provider).delta().buildRequest().get();
+            return FileUtil.getRootUserRequestBuilder(getProvider()).delta().buildRequest().get();
         } catch (GraphServiceException | IllegalArgumentException cause) {
             LOGGER.info(cause.getMessage(), cause);
             throw new RuntimeException("Error Occurred During Subscription");
@@ -170,7 +191,7 @@ public class FileChangeInfoHandler {
      */
     private DriveItemDeltaCollectionPage getDeltaCollectionWithToken(String token) {
         try {
-            return FileUtil.getRootUserRequestBuilder(provider)
+            return FileUtil.getRootUserRequestBuilder(getProvider())
                     .delta(DriveItemDeltaParameterSet
                             .newBuilder()
                             .withToken(token)
@@ -193,9 +214,12 @@ public class FileChangeInfoHandler {
     private String getDeltaLinkToken(DriveItemDeltaCollectionPage deltaCollectionPage) {
         while (deltaCollectionPage != null && !deltaCollectionPage.getCurrentPage().isEmpty()) {
             if (deltaCollectionPage.deltaLink() != null) {
-                return Arrays.stream(Objects.requireNonNull(deltaCollectionPage.deltaLink())
-                        .split("token")).collect(Collectors.toList()).get(1).substring(1);
-
+                String deltaLink = Objects.requireNonNull(deltaCollectionPage.deltaLink());
+                int tokenStart = deltaLink.indexOf("token='") + 7;
+                int tokenEnd = deltaLink.lastIndexOf("'");
+                if (tokenStart > 6 && tokenEnd > tokenStart) {
+                    return deltaLink.substring(tokenStart, tokenEnd);
+                }
             }
             if (deltaCollectionPage.getNextPage() != null) {
                 deltaCollectionPage = deltaCollectionPage.getNextPage().buildRequest().get();

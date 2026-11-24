@@ -20,6 +20,8 @@ Write, or Own).
 | Source         | Text | Yes      | Full path to the file to be shared (e.g., /Documents/file.txt). For shared drives, use format driveId:/path/to/file    |
 | Share          | List | Yes      | List of users and their permissions. Each entry contains: User (Email), Permissions (Read, Write, Read and Write, Own) |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type         | Description                                                                   |

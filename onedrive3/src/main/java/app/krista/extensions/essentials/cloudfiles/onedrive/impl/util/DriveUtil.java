@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl.util;
@@ -39,7 +39,7 @@ public final class DriveUtil {
             throw new IllegalArgumentException("Failed to get file from input stream. Input stream is empty.");
         }
         stringValidator(fileName, "Failed to get file from input stream. File name is empty.");
-        File outputFile = new File(fileName);
+        File outputFile = new File(System.getProperty("java.io.tmpdir"), fileName);
         Files.copy(stream, outputFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
         return outputFile;
     }

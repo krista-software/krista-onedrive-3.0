@@ -13,11 +13,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.api;
 
+import app.krista.extensions.essentials.cloudfiles.onedrive.mcp.OnedriveMcpSetupResource;
 import org.jvnet.hk2.annotations.ContractsProvided;
 import org.jvnet.hk2.annotations.Service;
 
@@ -32,7 +33,8 @@ public class OnedriveApplication extends Application {
 
     @Override
     public Set<Class<?>> getClasses() {
-        return Set.of(AuthenticationResource.class);
+        return Set.of(AuthenticationResource.class, ListenerResource.class,
+                OneDriveAuditResource.class, OnedriveMcpSetupResource.class);
     }
 
 }

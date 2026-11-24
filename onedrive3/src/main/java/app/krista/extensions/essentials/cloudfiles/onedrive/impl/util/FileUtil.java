@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl.util;
@@ -23,6 +23,8 @@ import com.microsoft.graph.models.DriveItem;
 import com.microsoft.graph.requests.DriveItemRequestBuilder;
 
 import java.io.*;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
@@ -182,6 +184,10 @@ public class FileUtil {
 
         String path = Arrays.stream(stream, 4, stream.length)
                 .collect(Collectors.joining("/"));
+
+        // URL-decode the path so that re-entered paths (where the SubCatalog framework
+        // encodes '/' as '%2F') resolve correctly against the Graph API.
+        path = URLDecoder.decode(path, StandardCharsets.UTF_8);
 
         return List.of(stream[2], path);
     }

@@ -13,112 +13,148 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive;
 
-import app.krista.extension.authorization.MustAuthenticateException;
 import app.krista.extension.authorization.MustAuthorizeException;
-import app.krista.extension.authorization.RequestAuthenticator;
-import app.krista.extension.request.ProtoRequest;
-import app.krista.extension.request.ProtoResponse;
-import app.krista.extension.request.protos.http.HttpRequest;
+import app.krista.extension.authorization.RequestAuthenticator.AuthorizationResponse;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.stores.OnedriveAttributeStore;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.Constants;
-import app.krista.model.field.NamedField;
 import app.krista.model.field.NamedValuedField;
-import com.github.scribejava.core.oauth.OAuth20Service;
+import app.krista.sdk.msauth.MicrosoftAuthSdk;
+import app.krista.sdk.msauth.extension.base.AbstractRequestAuthenticator;
+import app.krista.sdk.msauth.extension.base.MsAuthAttributes;
+import app.krista.sdk.msauth.token.ITokenStore;
+import app.krista.sdk.msauth.token.InMemoryTokenStore;
 import org.jvnet.hk2.annotations.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import javax.ws.rs.core.MultivaluedMap;
-import java.io.IOException;
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
 
 @Service
-public class OnedriveRequestAuthenticator implements RequestAuthenticator {
+public class OnedriveRequestAuthenticator extends AbstractRequestAuthenticator {
 
-    private static final String ONEDRIVE_CALLBACK = "/onedrive/callback";
+    private static final Logger LOGGER = LoggerFactory.getLogger(OnedriveRequestAuthenticator.class);
     private final OnedriveAttributeStore onedriveAttributeStore;
-    private final OnedriveAttributes onedriveAttributes;
 
     @Inject
-    public OnedriveRequestAuthenticator(OnedriveAttributeStore onedriveAttributeStore, OnedriveAttributes onedriveAttributes) {
+    public OnedriveRequestAuthenticator(OnedriveAttributeStore onedriveAttributeStore, String invokerId,
+                                         String routingUrl) {
+        super(invokerId, routingUrl, "/onedrive");
         this.onedriveAttributeStore = onedriveAttributeStore;
-        this.onedriveAttributes = onedriveAttributes;
     }
 
-    @Override
-    public String getScheme() {
-        return null;
-    }
-
-    @Override
-    public Set<String> getSupportedProtocols() {
-        return Set.of();
-    }
-
-    @Override
-    public String getAuthenticatedAccountId(ProtoRequest protoRequest) {
-        try {
-            HttpRequest httpRequest = (HttpRequest) protoRequest;
-            if (ONEDRIVE_CALLBACK.equals(httpRequest.getUri().getPath())) {
-                httpRequest.bufferBody();
-                MultivaluedMap<String, String> queryParameters = httpRequest.getQueryParameters();
-                String state = String.valueOf(queryParameters.get(Constants.STATE).getFirst());
-                String[] parts = state.split(Constants.HASH);
-                return parts[0];
-            } else {
-                return null;
-            }
-        } catch (RuntimeException | IOException cause) {
-            return null;
-        }
-    }
-
-    @Override
-    public boolean setServiceAuthorization(String s) {
-        return false;
-    }
-
-    @Override
-    public Map<String, NamedField> getAttributeFields() {
-        return Map.of();
-    }
-
-    @Override
-    public ProtoResponse getMustAuthenticateResponse(MustAuthenticateException cause, ProtoRequest request) {
-        return null;
-    }
-
-    @Override
-    public AuthorizationResponse getMustAuthenticateResponse(MustAuthenticateException cause) {
-        return null;
-    }
-
-    @Override
-    public ProtoResponse getMustAuthorizeResponse(MustAuthorizeException cause, ProtoRequest request) {
-        return null;
-    }
-
+    /**
+     * Overrides the SDK's default to handle the wsContact bypass:
+     * when the userId starts with "wsContact", the attribute store is bypassed
+     * entirely and a default PUBLIC configuration is used instead.
+     */
     @Override
     public AuthorizationResponse getMustAuthorizeResponse(MustAuthorizeException cause) {
-        String userId = (String) cause.getDetails().getFirst().getValue();
-        Optional<NamedValuedField> authContextIdField = cause.getDetails().stream().filter(namedValuedField -> Objects.equals(namedValuedField.getName(), Constants.AUTH_CONTEXT_ID)).findFirst();
-
-        OnedriveAttributes effectiveOnedriveAttributes;
-        String state;
-        if (authContextIdField.isPresent()) {
-            String authContextId = (String) authContextIdField.get().getValue();
-            effectiveOnedriveAttributes = onedriveAttributeStore.load(authContextId);
-            state = userId + Constants.HASH + authContextId;
-        } else {
-            effectiveOnedriveAttributes = onedriveAttributes;
-            state = userId;
+        List<NamedValuedField> details = cause.getDetails();
+        if (details == null || details.isEmpty()) {
+            LOGGER.error("getMustAuthorizeResponse: FAILURE — MustAuthorizeException has no details. Cannot build auth URL. cause={}",
+                    cause.getMessage());
+            throw new IllegalStateException("MustAuthorizeException has no details");
         }
-        OAuth20Service oAuth20Service = effectiveOnedriveAttributes.getOAuth20Service();
-        String url = oAuth20Service.getAuthorizationUrl(state);
-        return new AuthorizationResponse(url + Constants.AUTH_URL_QUERY_PARAMS, Collections.emptyList());
+
+        String fieldName = details.get(0).getName();
+        String userId = (String) details.get(0).getValue();
+        LOGGER.info("getMustAuthorizeResponse: ===== START =====");
+        LOGGER.info("getMustAuthorizeResponse: Handling MAE — fieldName={}, userId={}, detailCount={}, causeMsg={}",
+                fieldName, userId, details.size(), cause.getMessage());
+        if (details.size() > 1) {
+            for (int i = 1; i < details.size(); i++) {
+                LOGGER.info("getMustAuthorizeResponse: detail[{}] name={}, value={}",
+                        i, details.get(i).getName(), details.get(i).getValue());
+            }
+        }
+
+        if (userId != null && userId.startsWith(Constants.WS_CONTACT)) {
+            // MCP per-user OAuth link always uses the Krista default public credentials from
+            // config.properties — NOT the operator's own Azure app. The Krista default app has
+            // the correct redirect URIs and pre-configured consent for the MCP flow.
+            String invokerId = details.size() > 1 ? (String) details.get(1).getValue() : null;
+            LOGGER.info("getMustAuthorizeResponse: Per-user (wsContact) path — wsContactId={}, invokerId={}",
+                    userId, invokerId);
+
+            MsAuthAttributes attrs = createDefaultAttributes(getRoutingUrl());
+            LOGGER.info("getMustAuthorizeResponse: Using Krista default PUBLIC credentials from config.properties — authType={}, clientId={}",
+                    attrs.getAuthType(),
+                    attrs.getClientId() != null
+                            ? attrs.getClientId().substring(0, Math.min(6, attrs.getClientId().length())) + "***"
+                            : "null (loaded from config.properties)");
+            LOGGER.info("getMustAuthorizeResponse: Effective attrs — authType={}, callbackEndpoint={}",
+                    attrs.getAuthType(), attrs.getCallbackEndPoint());
+            MicrosoftAuthSdk sdk = attrs.toSdk(getTokenStore());
+            // State format: wsContactId#invokerId#forwardPath
+            // The callback parses parts[1] as the invokerId and saves enriched attrs under it.
+            String state = userId + "#" + getInvokerId();
+            if ("Public".equals(attrs.getAuthType())) {
+                state += "#" + attrs.getForwardPath();
+            }
+            LOGGER.info("getMustAuthorizeResponse: State built — state={}", state);
+            String url;
+            try {
+                url = sdk.buildAuthorizationUrl(state);
+            } catch (Exception e) {
+                LOGGER.error("getMustAuthorizeResponse: FAILURE — buildAuthorizationUrl threw exception for wsContactId={} — {}: {}",
+                        userId, e.getClass().getSimpleName(), e.getMessage(), e);
+                throw e;
+            }
+            if (url == null || url.isBlank()) {
+                LOGGER.error("getMustAuthorizeResponse: FAILURE — buildAuthorizationUrl returned blank URL for wsContactId={}", userId);
+            } else {
+                LOGGER.info("getMustAuthorizeResponse: SUCCESS — OAuth URL generated for wsContactId={} (starts with: {})",
+                        userId, url.substring(0, Math.min(80, url.length())));
+            }
+            return new AuthorizationResponse(url, Collections.emptyList());
+        }
+
+        LOGGER.info("getMustAuthorizeResponse: Non-wsContact path — userId={} — delegating to super.getMustAuthorizeResponse", userId);
+        MsAuthAttributes loaded = null;
+        try {
+            loaded = loadAttributes(userId);
+        } catch (Exception e) {
+            LOGGER.error("getMustAuthorizeResponse: FAILURE — loadAttributes threw exception for userId={} — {}: {}",
+                    userId, e.getClass().getSimpleName(), e.getMessage(), e);
+        }
+        LOGGER.info("getMustAuthorizeResponse: loadAttributes(userId={}) → {}",
+                userId, loaded != null ? "FOUND authType=" + loaded.getAuthType() : "NULL (will use default PUBLIC attrs)");
+        AuthorizationResponse response;
+        try {
+            response = super.getMustAuthorizeResponse(cause);
+        } catch (Exception e) {
+            LOGGER.error("getMustAuthorizeResponse: FAILURE — super.getMustAuthorizeResponse threw exception for userId={} — {}: {}",
+                    userId, e.getClass().getSimpleName(), e.getMessage(), e);
+            throw e;
+        }
+        if (response == null || response.getLocation() == null || response.getLocation().isBlank()) {
+            LOGGER.error("getMustAuthorizeResponse: FAILURE — super returned null/blank URL for userId={}", userId);
+        } else {
+            LOGGER.info("getMustAuthorizeResponse: SUCCESS — super returned URL for userId={} (starts with: {})",
+                    userId, response.getLocation().substring(0, Math.min(80, response.getLocation().length())));
+        }
+        return response;
+    }
+
+    @Override
+    protected MsAuthAttributes loadAttributes(String key) {
+        return onedriveAttributeStore.load(key);
+    }
+
+    @Override
+    protected ITokenStore getTokenStore() {
+        return new InMemoryTokenStore();
+    }
+
+    @Override
+    protected MsAuthAttributes createDefaultAttributes(String routingUrl) {
+        return new OnedriveAttributes(routingUrl, null, null, "", null, Constants.PUBLIC);
     }
 }

@@ -1,67 +1,109 @@
 plugins {
+    id "jacoco"
     id 'java'
+    id "com.github.node-gradle.node" version "3.1.0"
     id 'maven-publish'
+    id("org.sonarqube") version "6.3.1.5724"
 }
 
+apply plugin: 'java-library'
+
+sonar {
+    properties {
+        property('sonar.projectName', 'SonarScanner for Krista Global Catalog (onedrive3 with Jacoco code coverage)')
+        property("sonar.projectKey", "sonar-scanner-onedrive3")
+        property("sonar.sources", "src/main/java")
+        property("sonar.tests", "src/test/java")
+        property("sonar.java.binaries", "build/classes/java/main")
+        property("sonar.java.test.binaries", "build/classes/java/test")
+        property("sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml")
+        property("sonar.junit.reportPaths", "build/test-results/test")
+    }
+}
 
 group 'app.krista.extensions.essentials.cloudfiles'
 
+/*
+ * Use extension.name for archiveBaseName, extension.version for version.
+ * Resulting jar: <extension.name>-<extension.version>.jar e.g. onedriveV3-extension-4.0.0.jar
+ */
 def computedBaseName = "onedriveV3-extension"
 def computedVersion = "local"
-
-tasks.register("setReleaseProperties") {
-    dependsOn("generateReleaseProperties")
-    doFirst {
-        def releasePropsFile = file("release.properties")
-        if (releasePropsFile.exists()) {
-            def props = new Properties()
-            releasePropsFile.withInputStream { stream -> props.load(stream) }
-            computedBaseName = (props['extension.name'] ?: computedBaseName).replaceAll(/\s+/, "")
-            computedVersion = props['extension.version'] ?: computedVersion
-
-            project.ext.set("finalBaseName", computedBaseName)
-            project.version = computedVersion
-
-            println "✓ Loaded extension name = ${computedBaseName}, version = ${computedVersion}"
-        } else {
-            logger.info("⚠ release.properties not found; using default values.")
-            project.ext.set("finalBaseName", computedBaseName)
-            project.version = computedVersion
-        }
-    }
+def releasePropsFile = file('release.properties')
+if (releasePropsFile.exists()) {
+    def props = new Properties()
+    releasePropsFile.withInputStream { stream -> props.load(stream) }
+    computedBaseName = (props['extension.name'] ?: "onedriveV3-extension").replaceAll(/\s+/, "")
+    computedVersion = props['extension.version'] ?: "local"
 }
-repositories {
-    maven {
-        url "https://packages.cicd.in.antbrains.com/artifactory/libs-release"
+version = computedVersion
+
+if (rootProject.file('builder.txt').canRead()) {
+    ext.builder = rootProject.file('builder.txt').text.trim()
+} else {
+    ext.builder = "0"
+}
+
+task updateVersion {
+    doFirst {
+        project.ext.newbuilder = Integer.parseInt(project.ext.builder) + 1
+        print "Building extension version: " + version.toString() + "-" + project.ext.newbuilder
+        rootProject.file('builder.txt').text = project.ext.newbuilder
+        System.clearProperty("extensionVersion")
+        System.setProperty("extensionVersion", version.toString() + "-" + project.ext.newbuilder)
     }
-    mavenCentral()
-    mavenLocal()
 }
 
 System.setProperty("extensionVersion", version.toString())
 
-sourceCompatibility = '21'
-targetCompatibility = '21'
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
 
-tasks.withType(JavaCompile) {
+repositories {
+    mavenLocal()
+    maven {
+        url "https://packages.cicd.in.antbrains.com/artifactory/libs-release"
+    }
+    mavenCentral()
+}
+
+tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.compilerArgs << '-Xlint:all,-serial'
 }
 
-
-configurations {
-    implementation {
-        canBeConsumed = false
-        canBeResolved = true
-    }
+tasks.register('compile') {
+    dependsOn compileJava
 }
 
+tasks.named('compileTestJava') {
+    dependsOn(tasks.named('extractSDKResources'))
+}
+
+test {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+
+    jvmArgs '-Dnet.bytebuddy.experimental=true'
+    systemProperty 'mockito.mock.maker', 'subclass'
+    maxHeapSize = "1G"
+}
 
 dependencies {
+    annotationProcessor 'app.krista:extension-impl-anno-processors:1.0.125-sp1'
+    compileOnly 'app.krista:krista-apis:1.0.125-sp1'
+    compileOnly 'org.glassfish.hk2:hk2-api:3.0.3'
 
-    annotationProcessor 'app.krista:extension-impl-anno-processors:1.0.117'
-    implementation 'app.krista:krista-apis:1.0.117'
-    implementation 'org.glassfish.hk2:hk2-api:3.0.3'
+    // Microsoft Auth SDK — core auth + extension API (base classes, annotations, registry)
+    implementation 'app.krista.sdk:microsoft-auth-sdk:1.0.5'
+
     implementation 'com.microsoft.graph:microsoft-graph:5.80.0'
     implementation 'com.microsoft.graph:microsoft-graph-auth:0.3.0'
     implementation 'com.azure:azure-identity:1.11.2'
@@ -69,8 +111,14 @@ dependencies {
     implementation 'com.github.scribejava:scribejava-apis:8.3.3'
     implementation 'org.glassfish.jersey.media:jersey-media-multipart:2.35'
 
+    // log4j-core for RequestLogCapture (compileOnly — present at runtime via krista-apis)
+    compileOnly 'org.apache.logging.log4j:log4j-core:2.20.0'
+    testCompileOnly 'org.apache.logging.log4j:log4j-core:2.20.0'
+
     testImplementation 'com.kristasoft.common:common-test:1.0.39'
-    testImplementation 'app.krista:krista-apis:1.0.115'
+    testImplementation 'app.krista:krista-apis:1.0.125-sp1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.10.0'
 }
 
 tasks.register('createSourceDir', Exec) {
@@ -86,6 +134,69 @@ tasks.register('copyGradleFile', Exec) {
 tasks.register('includeSources', Exec) {
     dependsOn copyGradleFile
     commandLine "cp", "-r", "$projectDir/src", "$projectDir/build/classes/java/main/META-INF/project/src"
+}
+
+tasks.register('candidate', Exec) {
+    commandLine "env",
+            "DOCKER_UPLOAD_REPO=" + rootProject.properties['DOCKER_UPLOAD_REPO'],
+            "MAVEN_URL=" + System.properties['MAVEN_URL'],
+            "MAVEN_UPLOAD_URL=" + rootProject.properties['MAVEN_UPLOAD_URL'],
+            "MAVEN_USERNAME=" + rootProject.properties['MAVEN_USERNAME'],
+            "MAVEN_PASSWORD=" + rootProject.properties['MAVEN_PASSWORD'],
+            "bash", "candidate.sh"
+    standardOutput = new ByteArrayOutputStream()
+    ext.output = {
+        return standardOutput.toString()
+    }
+}
+
+tasks.register('release', Exec) {
+    commandLine "env",
+            "DOCKER_UPLOAD_REPO=" + rootProject.properties['DOCKER_UPLOAD_REPO'],
+            "MAVEN_URL=" + System.properties['MAVEN_URL'],
+            "MAVEN_UPLOAD_URL=" + rootProject.properties['MAVEN_UPLOAD_URL'],
+            "MAVEN_USERNAME=" + rootProject.properties['MAVEN_USERNAME'],
+            "MAVEN_PASSWORD=" + rootProject.properties['MAVEN_PASSWORD'],
+            "bash", "release.sh"
+    standardOutput = new ByteArrayOutputStream()
+    ext.output = {
+        return standardOutput.toString()
+    }
+}
+
+// Extract pre-built auth + audit HTML from SDK JAR into build resources.
+// No React build, no Node/Yarn — the SDK JAR contains ready-to-serve HTML.
+configurations {
+    sdkUi {
+        canBeResolved = true
+        transitive = false
+    }
+}
+dependencies {
+    sdkUi 'app.krista.sdk:microsoft-auth-sdk:1.0.5'
+}
+tasks.register('extractSDKResources', Copy) {
+    def sdkJar = configurations.sdkUi.singleFile
+    from(zipTree(sdkJar)) {
+        include 'auth/index.html'
+        include 'audit/index.html'
+        include 'mcp-setup/index.html'
+    }
+    into("${project.buildDir}/resources/main")
+    includeEmptyDirs = false
+}
+
+tasks.register('buildAndCopyUI') {
+    dependsOn(tasks.named('extractSDKResources'))
+}
+
+tasks.register('buildUI') {
+    dependsOn(tasks.named('extractSDKResources'))
+}
+
+// Ensure SDK resources are extracted before JAR is built
+tasks.named('processResources') {
+    dependsOn(tasks.named('extractSDKResources'))
 }
 
 import java.util.regex.Pattern
@@ -113,10 +224,8 @@ tasks.register('generateReleaseProperties') {
         }
 
         def properties = new Properties()
-        // Pre-compile the regex pattern for better performance
         def keyValuePattern = Pattern.compile(/(\w+)\s*=\s*"([^"]+)"/)
 
-        // Extract Extension annotation information
         extractAnnotationInfo(extensionFile, "@Extension", keyValuePattern) { key, value ->
             if (key == "version") {
                 properties.setProperty("extension.version", value)
@@ -127,17 +236,14 @@ tasks.register('generateReleaseProperties') {
             }
         }
 
-        // Set default extension name if not found
         if (!properties.getProperty('extension.name')) {
             properties.setProperty("extension.name", "OneDrive Files")
             logger.lifecycle("Set default extension name: OneDrive Files")
         }
 
-        // Try to extract Domain annotation information from all area files
         def domainFound = false
         def ecosystemFound = false
 
-        // Check each area file if it exists
         [managementAreaFile, oneDriveAreaFile].each { areaFile ->
             if (areaFile.exists()) {
                 extractAnnotationInfo(areaFile, "@Domain", keyValuePattern) { key, value ->
@@ -158,7 +264,6 @@ tasks.register('generateReleaseProperties') {
             throw new GradleException("Could not find extension version in ${extensionFilePath}")
         }
 
-        // Set default values if not found in annotations
         if (!properties.getProperty('domain.name')) {
             properties.setProperty("domain.name", "Cloud Files")
             logger.lifecycle("Set default domain name: Cloud Files")
@@ -183,7 +288,7 @@ def extractAnnotationInfo(File file, String annotationName, Pattern keyValuePatt
         line = line.trim()
         if (line.contains(annotationName)) {
             inAnnotation = true
-            annotationText.setLength(0) // Reset the buffer when starting a new annotation
+            annotationText.setLength(0)
             annotationText.append(line)
         } else if (inAnnotation) {
             annotationText.append(line)
@@ -201,20 +306,35 @@ def extractAnnotationInfo(File file, String annotationName, Pattern keyValuePatt
     }
 }
 
-
 tasks.named("jar") {
     dependsOn tasks.named("generateReleaseProperties")
+    dependsOn tasks.named("buildAndCopyUI")
+    dependsOn tasks.named("includeSources")
 }
 
 jar {
-    dependsOn tasks.named("setReleaseProperties")
-    dependsOn includeSources
+    archiveBaseName.set(computedBaseName)
 
-    archiveBaseName = project.ext.has("finalBaseName") ? project.ext.finalBaseName : "onedriveV3-extension"
+    doFirst {
+        def jarReleasePropsFile = file('release.properties')
+        if (jarReleasePropsFile.exists()) {
+            def props = new Properties()
+            jarReleasePropsFile.withInputStream { stream -> props.load(stream) }
+            def actualBaseName = (props['extension.name'] ?: "onedriveV3-extension").replaceAll(/\s+/, "")
+            def actualVersion = props['extension.version'] ?: "local"
+
+            println "Using jar name from release.properties: ${actualBaseName}-${actualVersion}.jar"
+
+            archiveBaseName.set(actualBaseName)
+            archiveVersion.set(actualVersion)
+        } else {
+            println "release.properties not found, using fallback values"
+        }
+    }
 
     manifest {}
     from {
-        configurations.implementation.collect {
+        configurations.runtimeClasspath.collect {
             it.isDirectory() ? it : zipTree(it)
         }
     }
@@ -222,51 +342,28 @@ jar {
     duplicatesStrategy = "exclude"
 }
 
-tasks.withType(JavaCompile) {
-    options.encoding = 'UTF-8'
-    options.compilerArgs << '-Xlint:all,-serial'
-}
-
-
-task candidate(type: Exec) {
-    commandLine "env",
-            "DOCKER_UPLOAD_REPO=" + rootProject.properties['DOCKER_UPLOAD_REPO'],
-            "MAVEN_URL=" + System.properties['MAVEN_URL'],
-            "MAVEN_UPLOAD_URL=" + rootProject.properties['MAVEN_UPLOAD_URL'],
-            "MAVEN_USERNAME=" + rootProject.properties['MAVEN_USERNAME'],
-            "MAVEN_PASSWORD=" + rootProject.properties['MAVEN_PASSWORD'],
-            "bash", "candidate.sh"
-    standardOutput = new ByteArrayOutputStream()
-    ext.output = {
-        return standardOutput.toString()
-    }
-}
-
-task release(type: Exec) {
-    commandLine "env",
-            "DOCKER_UPLOAD_REPO=" + rootProject.properties['DOCKER_UPLOAD_REPO'],
-            "MAVEN_URL=" + System.properties['MAVEN_URL'],
-            "MAVEN_UPLOAD_URL=" + rootProject.properties['MAVEN_UPLOAD_URL'],
-            "MAVEN_USERNAME=" + rootProject.properties['MAVEN_USERNAME'],
-            "MAVEN_PASSWORD=" + rootProject.properties['MAVEN_PASSWORD'],
-            "bash", "release.sh"
-    standardOutput = new ByteArrayOutputStream()
-    ext.output = {
-        return standardOutput.toString()
-    }
-}
-
-
-jar {
-    manifest {
-    }
-    from {
-        configurations.implementation.collect {
-            it.isDirectory() ? it : zipTree(it)
+tasks.withType(Test).configureEach {
+    doFirst {
+        def byteBuddyAgent = configurations.testRuntimeClasspath.find { it.name.contains('byte-buddy-agent') }
+        if (byteBuddyAgent) {
+            jvmArgs "-javaagent:${byteBuddyAgent}"
         }
     }
-    exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
-    duplicatesStrategy = "exclude"
 }
 
+jacoco {
+    toolVersion = "0.8.11"
+}
 
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+}
+
+tasks.named('sonar') {
+    dependsOn jacocoTestReport
+}

@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.utilTest;
@@ -339,6 +339,47 @@ public class FileUtilTest {
         String path = "/drive/root:/CN Test/subfolder";
         String input = "/drive/root:/CN Test2";
         assertFalse(FileUtil.isPathContainsInput(path, input));
+    }
+
+    // ========================================
+    // getDriveIDAndPath — URL-decode fix
+    // ========================================
+
+    @Test
+    public void testGetDriveIDAndPath_PlainPath_UnchangedAfterDecode() {
+        // Normal path without encoding — should pass through unchanged
+        String plainPath = "/drives/b!jxUeN0DgA02sUFccW1Pb1lXRHihDmDNCmAiRj77wj4mIw359lmkzQYFiwAJ5WZk3/root:/Teams/QA/03_Automation";
+        List<String> result = FileUtil.getDriveIDAndPath(plainPath);
+        assertEquals("Drive ID must be extracted correctly",
+                "b!jxUeN0DgA02sUFccW1Pb1lXRHihDmDNCmAiRj77wj4mIw359lmkzQYFiwAJ5WZk3", result.get(0));
+        assertEquals("Plain path must remain unchanged", "Teams/QA/03_Automation", result.get(1));
+    }
+
+    @Test
+    public void testGetDriveIDAndPath_UrlEncodedSlashes_DecodedCorrectly() {
+        // SubCatalog framework re-enters with %2F instead of /
+        String encodedPath = "/drives/b!abc123XYZ/root:/folder%2Fsubfolder%2Ffile.txt";
+        List<String> result = FileUtil.getDriveIDAndPath(encodedPath);
+        assertEquals("Drive ID must be extracted correctly", "b!abc123XYZ", result.get(0));
+        assertEquals("URL-encoded %2F must be decoded to /", "folder/subfolder/file.txt", result.get(1));
+    }
+
+    @Test
+    public void testGetDriveIDAndPath_SingleEncodedSegment_DecodedCorrectly() {
+        // Single %2F — one path separator re-entered via SubCatalog
+        String encodedPath = "/drives/b!testDriveId/root:/parentFolder%2FchildFolder";
+        List<String> result = FileUtil.getDriveIDAndPath(encodedPath);
+        assertEquals("b!testDriveId", result.get(0));
+        assertEquals("parentFolder/childFolder", result.get(1));
+    }
+
+    @Test
+    public void testGetDriveIDAndPath_NoSubPath_EmptyPathReturned() {
+        // Path ends at /root:/ with nothing after — relative path should be empty
+        String rootOnlyPath = "/drives/b!abc123/root:/";
+        List<String> result = FileUtil.getDriveIDAndPath(rootOnlyPath);
+        assertEquals("b!abc123", result.get(0));
+        assertEquals("", result.get(1));
     }
 
 }

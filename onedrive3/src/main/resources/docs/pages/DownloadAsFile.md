@@ -19,6 +19,8 @@ other Krista operations.
 |----------------|------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Source Path    | Text | Yes      | Full path to the file in the cloud storage that should be downloaded (e.g., /Documents/file.pdf or /Sites/TeamSite/Shared Documents/report.xlsx). For shared drives, use format driveId:/path/to/file |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type      | Description                                                               |
@@ -398,20 +400,35 @@ Files with the following extensions are automatically downloaded as ZIP:
 
 ## Path Format Reference
 
-### Personal Drive Paths
+### Personal OneDrive (your own drive)
 
-- **File**: `drive/root:/Documents/file.pdf`
-- **Subfolder File**: `drive/root:/Folder/SubFolder/file.xlsx`
+Use the shorthand format directly — no Get Drives call required:
 
-### Shared Drive Paths
+| Location | Path Format | Example |
+|---|---|---|
+| File in personal drive | `drive/root:/FolderName/filename.ext` | `drive/root:/Documents/report.pdf` |
+| File in subfolder | `drive/root:/Folder/Subfolder/filename.ext` | `drive/root:/Documents/Archive/data.xlsx` |
 
-- **Format**: `drives/b!{driveId}/root:/path/to/file`
-- **Example**: `drives/b!absdbfbbvwevb/root:/Reports/report.pdf`
+> `drive/root:/` (singular `drive`, no drive ID) always refers to the authenticated user's own personal OneDrive.
 
-### Relative Paths (Personal Drive)
+### SharePoint Document Libraries and Shared Drives
 
-- **File**: `/Documents/file.txt`
-- **Subfolder File**: `/Archive/OldFiles/data.csv`
+For SharePoint document libraries or any shared drive, call **[Get Drives](pages/GetDrives.md)** first to obtain the Drive Path, then append the file path:
+
+| Location | Path Format | Example |
+|---|---|---|
+| File at root of a shared drive | `drives/{driveId}/root:/filename.ext` | `drives/b!abc123XYZ/root:/report.pdf` |
+| File in a folder on a shared drive | `drives/{driveId}/root:/FolderName/filename.ext` | `drives/b!abc123XYZ/root:/Reports/Q4_Report.pdf` |
+| File in a subfolder on a shared drive | `drives/{driveId}/root:/Folder/Sub/filename.ext` | `drives/b!abc123XYZ/root:/Reports/2024/summary.xlsx` |
+
+> Always use the Drive Path exactly as returned by Get Drives. Do not manually construct or guess the `{driveId}` value.
+
+### Quick Reference
+
+| Storage Type | Source Path Example |
+|---|---|
+| Personal OneDrive | `drive/root:/Documents/report.pdf` |
+| SharePoint / Shared Drive | `drives/b!abc123XYZ/root:/Reports/Q4_Report.pdf` |
 
 ## See Also
 

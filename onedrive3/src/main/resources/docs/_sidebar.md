@@ -14,6 +14,7 @@
 
 * **File Operations**
     * [Copy](pages/Copy.md)
+    * [Copy With Name](pages/CopyWithName.md)
     * [Delete](pages/Delete.md)
     * [Download as Link](pages/DownloadAsLink.md)
     * [Download as File](pages/DownloadAsFile.md)
@@ -26,6 +27,7 @@
 
 * **Folder Operations**
     * [Create Folder](pages/CreateFolder.md)
+    * [Get Drives](pages/GetDrives.md)
     * [Get Info](pages/GetInfo.md)
     * [Get Info Result](pages/GetInfoResult.md)
     * [List Files](pages/ListFiles.md)
@@ -41,6 +43,9 @@
 * **Change Tracking**
     * [Changes Since](pages/ChangesSince.md)
     * [When a File is Changed](pages/WhenAFileIsChanged.md)
+
+* **AI Assistant**
+    * [AI Assistant (MCP)](pages/AiAssistant.md)
 
 * **Additional Resources**
     * [Release Notes](pages/release_notes.md)

@@ -19,6 +19,8 @@ Upload the content of a Krista File from the media server to OneDrive at the spe
 | Krista File    | File | Yes      | The file to be uploaded to OneDrive. Supports files up to 50 MB in size                                                      |
 | Target Path    | Text | Yes      | Full path where the file should be uploaded (e.g., /Documents/file.pdf). For shared drives, use format driveId:/path/to/file |
 
+> 📌 **Root folder path:** For an item in your OneDrive **root folder**, prefix its name with **`drive/root:/`** — e.g. **`drive/root:/report.pdf`** (`drive/root:/` alone refers to the root itself). For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type         | Description                                                                  |

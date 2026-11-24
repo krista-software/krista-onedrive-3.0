@@ -1,362 +1,231 @@
-# Authentication
+# Authentication Tab Guide — OneDrive Extension
 
-## Overview
+This guide explains the three authentication types available in the OneDrive Authentication tab, how to create an Azure AD app registration for the two types that require it, and how to configure the extension settings.
 
-The OneDrive Files extension uses OAuth 2.0 authentication with Microsoft Azure Active Directory (Azure AD) to securely
-access OneDrive resources. This page explains the authentication flow, token management, and troubleshooting
-authentication issues.
+---
 
-## OAuth 2.0 Authentication Flow
+## Authentication Types
 
-The extension implements the OAuth 2.0 Authorization Code Grant flow with the following steps:
+The OneDrive authentication tab offers three modes. Choose the one that fits your deployment.
 
-### 1. Initial Authorization
+### 1. Quick Setup *(Recommended)*
 
-When you first configure the extension or validate attributes:
+![Quick Setup](../_media/auth-quick-setup.png)
 
-1. **User initiates connection** by providing credentials in Krista
-2. **Extension redirects** user to Microsoft login page
-3. **User authenticates** with Microsoft credentials
-4. **User consents** to requested permissions
-5. **Microsoft redirects** back with authorization code
-6. **Extension exchanges** authorization code for access token and refresh token
+**What it is:** Krista manages the Microsoft app credentials on your behalf. You only need to provide your Microsoft 365 email address and sign in — no Azure AD app registration is required.
 
-### 2. Token Storage
+**Best for:** Individual users or organizations that want the simplest setup and are comfortable using Krista's shared Microsoft application.
 
-After successful authentication:
+**Permissions granted (managed by Krista):**
 
-- **Access Token**: Short-lived token (typically 1 hour) used for API requests
-- **Refresh Token**: Long-lived token used to obtain new access tokens
-- Both tokens are stored securely in Krista's encrypted storage
+| Scope | Purpose |
+|---|---|
+| `Files.ReadWrite.All` | Read and write all files in OneDrive |
+| `Sites.ReadWrite.All` | Read and write all SharePoint sites and drives |
+| `User.Read` | Sign in and read the user profile |
 
-### 3. Automatic Token Refresh
+**Fields required:**
+- Email (your Microsoft 365 email address)
 
-The extension automatically manages token lifecycle:
+---
 
-1. **Before each API call**, extension checks if access token is expired
-2. **If expired**, extension uses refresh token to obtain new access token
-3. **New access token** is stored and used for the API request
-4. **Process is transparent** to the user - no re-authentication required
+### 2. User Authentication (OAuth 2.0)
 
-## Grant Types
+![User Authentication](../_media/auth-user-authentication.png)
 
-### Authorization Code Grant
+**What it is:** Your organization provides its own Azure AD app registration. Each user authenticates individually via a Microsoft sign-in popup. Access is delegated — the app acts on behalf of the signed-in user.
 
-**Used for**: Initial user authentication and consent
+**Best for:** Organizations that require their own Azure AD app for compliance, control over permissions, or custom redirect URIs.
 
-**Flow**:
+**Fields required:**
+- Email
+- Client ID
+- Client Secret
+- Tenant ID (optional — leave blank for multi-tenant)
 
-```
-User → Microsoft Login → User Consent → Authorization Code → Access Token + Refresh Token
-```
+---
 
-**When it occurs**:
+### 3. Server to Server Authentication (Client Credentials)
 
-- First time configuring the extension
-- When validating attributes in Krista
-- After refresh token expires or is revoked
+![Server to Server Authentication](../_media/auth-server-server.png)
 
-**User action required**: Yes - user must log in and consent
+**What it is:** No user sign-in is required. The app authenticates directly with Microsoft using application-level permissions and accesses OneDrive files on behalf of the organization.
 
-### Refresh Token Grant
+**Best for:** Automated workflows, background jobs, scheduled tasks, and service integrations where a human sign-in is not possible or desirable.
 
-**Used for**: Obtaining new access tokens without user interaction
+**Fields required:**
+- Email (the Microsoft 365 email address associated with the connection)
+- Client ID
+- Client Secret
+- Tenant ID
 
-**Flow**:
+---
 
-```
-Refresh Token → New Access Token
-```
+## Supported Operations
 
-**When it occurs**:
+All 15 operations are supported across all three authentication types. There are no unsupported operations — everything is available regardless of which auth mode you choose.
 
-- Automatically when access token expires (typically every hour)
-- Before each API request if token is expired
+| Operation | Quick Setup | User Auth | Server-Server |
+|---|---|---|---|
+| Upload File | ✓ | ✓ | ✓ |
+| Download File | ✓ | ✓ | ✓ |
+| Delete File | ✓ | ✓ | ✓ |
+| Copy File | ✓ | ✓ | ✓ |
+| Move File | ✓ | ✓ | ✓ |
+| Create Folder | ✓ | ✓ | ✓ |
+| Get File Info | ✓ | ✓ | ✓ |
+| List Files | ✓ | ✓ | ✓ |
+| Write with Custom File Name | ✓ | ✓ | ✓ |
+| Search By Permissions | ✓ | ✓ | ✓ |
+| Get File Versions | ✓ | ✓ | ✓ |
+| Restore File Version | ✓ | ✓ | ✓ |
+| Get File Permissions | ✓ | ✓ | ✓ |
+| Set File Permissions | ✓ | ✓ | ✓ |
+| Get Shared Files | ✓ | ✓ | ✓ |
 
-**User action required**: No - fully automatic
+---
 
-## Token Expiration Scenarios
+## Creating an Azure AD App — User Authentication
 
-### Access Token Expiration
+Follow these steps in the [Azure Portal](https://portal.azure.com).
 
-**Expiration Time**: Typically 1 hour
+### Step 1: Register the app
 
-**What happens**:
+1. Go to **Azure Active Directory** → **App registrations** → **New registration**.
+2. Enter a name (e.g., `Krista OneDrive Integration`).
+3. Under **Supported account types**, select:
+   > **Accounts in any organizational directory (Any Azure AD directory – Multi-tenant)**
+4. Under **Redirect URI**, select **Web** and enter:
+   ```
+   {your-routing-url}/{extensionId}/rest/onedrive/callback
+   ```
+   Replace `{your-routing-url}` with your Krista appliance URL and `{extensionId}` with the extension's unique identifier (both are shown in the Authentication tab after clicking **Authorize**).
+   > **Tip:** The exact redirect URI is shown in the Authentication tab UI after you click **Authorize** — copy it from there to avoid typos.
+5. Click **Register**.
 
-1. Extension detects expired access token
-2. Extension uses refresh token to get new access token
-3. New access token is stored
-4. API request proceeds normally
+### Step 2: Note your Client ID and Tenant ID
 
-**User impact**: None - handled automatically
+On the app's **Overview** page, copy:
+- **Application (client) ID** → this is your **Client ID**
+- **Directory (tenant) ID** → this is your **Tenant ID**
 
-**Error messages**: None if refresh token is valid
+### Step 3: Create a Client Secret
 
-### Refresh Token Expiration
+1. Go to **Certificates & secrets** → **New client secret**.
+2. Enter a description and choose an expiry duration.
+3. Click **Add** and immediately copy the **Value** — it will not be shown again. This is your **Client Secret**.
 
-**Expiration Time**: Typically 90 days (or when explicitly revoked)
+### Step 4: Add API Permissions (Delegated)
 
-**What happens**:
+1. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions**.
+2. Add the following permissions:
 
-1. Extension attempts to use refresh token
-2. Microsoft returns error indicating refresh token is invalid
-3. Extension returns authentication error
-4. User must re-authenticate
+   | Permission | Purpose |
+   |---|---|
+   | `Files.ReadWrite.All` | Read and write all files in OneDrive |
+   | `Sites.ReadWrite.All` | Read and write all SharePoint sites and drives |
+   | `User.Read` | Sign in and read the user profile |
+   | `offline_access` | Maintain access via refresh token |
 
-**User impact**: Must re-authenticate through Krista
+3. Click **Grant admin consent** if your organization requires it.
 
-**Error messages**:
+---
 
-- "Authentication failed. Please re-validate attributes."
-- "Refresh token expired. Please reconnect."
-- "Invalid refresh token. Re-authentication required."
+## Creating an Azure AD App — Server to Server Authentication
 
-**Resolution**:
+Follow these steps in the [Azure Portal](https://portal.azure.com).
 
-1. Go to extension configuration in Krista
-2. Click "Validate Attributes" or "Reconnect"
-3. Complete the authentication flow again
+### Step 1: Register the app
 
-### Token Revocation
+1. Go to **Azure Active Directory** → **App registrations** → **New registration**.
+2. Enter a name (e.g., `Krista OneDrive Service`).
+3. Under **Supported account types**, select:
+   > **Accounts in this organizational directory only (Single tenant)**
+4. No redirect URI is needed — leave it blank.
+5. Click **Register**.
 
-**Causes**:
+### Step 2: Note your Client ID and Tenant ID
 
-- User changes password
-- Administrator revokes access
-- User revokes consent in Microsoft account settings
-- Security policy changes
+On the app's **Overview** page, copy:
+- **Application (client) ID** → this is your **Client ID**
+- **Directory (tenant) ID** → this is your **Tenant ID**
 
-**What happens**:
+### Step 3: Create a Client Secret
 
-1. Extension attempts to use token
-2. Microsoft returns authorization error
-3. Extension returns authentication error
+1. Go to **Certificates & secrets** → **New client secret**.
+2. Enter a description and choose an expiry duration.
+3. Click **Add** and immediately copy the **Value** — it will not be shown again. This is your **Client Secret**.
 
-**User impact**: Must re-authenticate
+### Step 4: Add API Permissions (Application)
 
-**Resolution**: Same as refresh token expiration
+1. Go to **API permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions**.
+2. Add the following permissions:
 
-## Required Permissions
+   | Permission | Purpose |
+   |---|---|
+   | `Files.ReadWrite.All` | Read and write files in all site collections |
+   | `Sites.ReadWrite.All` | Read and write items in all site collections |
+   | `User.Read.All` | Read all users' full profiles |
 
-The extension requests the following Microsoft Graph API permissions:
+3. Click **Grant admin consent** — this is **required** for application permissions.
 
-| Permission          | Type      | Purpose                                      | Admin Consent Required |
-|---------------------|-----------|----------------------------------------------|------------------------|
-| Files.ReadWrite.All | Delegated | Read and write all files user can access     | No                     |
-| Sites.ReadWrite.All | Delegated | Read and write items in all site collections | Yes (in some tenants)  |
-| offline_access      | Delegated | Maintain access to data                      | No                     |
+> **Note:** Application permissions grant access to all drives and sites in the tenant. Ensure your organization's security policy permits this before enabling Server to Server Authentication.
 
-### Permission Scopes Explained
+---
 
-#### Files.ReadWrite.All
+## Setting Up the Extension
 
-- Allows reading file metadata and content
-- Allows creating, updating, and deleting files
-- Allows copying and moving files
-- Limited to files the authenticated user can access
+### Quick Setup
 
-#### Sites.ReadWrite.All
+1. Open the **Authentication** tab of the OneDrive extension.
+2. The **Quick Setup** panel is selected by default on the left.
+3. Enter your **Microsoft 365 email address** in the Email field.
+4. Click **Authorize** — a Microsoft sign-in popup will open.
+5. Sign in with your Microsoft account and grant the requested permissions.
+6. On success, you are redirected back and the connection is saved automatically.
+7. Click **Test Connection** to verify the setup.
 
-- Allows access to SharePoint sites and shared drives
-- Required for shared drive operations
-- May require admin consent depending on tenant settings
+---
 
-#### offline_access
+### User Authentication (OAuth 2.0)
 
-- Allows obtaining refresh tokens
-- Enables automatic token refresh without user interaction
-- Essential for long-running workflows
+1. Open the **Authentication** tab and click **Advanced Setup** in the left panel.
+2. Select the **User Authentication** tab at the top.
+3. Fill in the fields:
+   - **Email** — your Microsoft 365 email address
+   - **Client ID** — Application (client) ID from your Azure AD app
+   - **Client Secret** — the secret value you copied from Azure
+   - **Tenant ID** — Directory (tenant) ID (leave blank for multi-tenant)
+4. Click **Save Changes**.
+5. Click **Authorize** — a Microsoft sign-in popup will open using your own app's credentials.
+6. Sign in and grant the requested permissions.
+7. Click **Test Connection** to verify the setup.
 
-## Authentication States
+---
 
-### Authenticated
+### Server to Server Authentication (Client Credentials)
 
-**Indicators**:
+1. Open the **Authentication** tab and click **Advanced Setup** in the left panel.
+2. Select the **Server to Server Authentication** tab at the top.
+3. Fill in the fields:
+   - **Email** — the Microsoft 365 email address associated with the connection
+   - **Client ID** — Application (client) ID from your Azure AD app
+   - **Client Secret** — the secret value you copied from Azure
+   - **Tenant ID** — Directory (tenant) ID of your organization
+4. Click **Save Changes** — no OAuth redirect is required. The service authenticates silently using client credentials.
+5. Click **Test Connection** to verify the setup.
 
-- Test Connection succeeds
-- Health Check shows "Healthy" status
-- Catalog requests execute successfully
+---
 
-**Token status**: Valid access token and refresh token
+## Troubleshooting
 
-**User action**: None required
-
-### Token Expired (Recoverable)
-
-**Indicators**:
-
-- Access token expired but refresh token valid
-- Automatic refresh in progress
-
-**Token status**: Expired access token, valid refresh token
-
-**User action**: None required - automatic recovery
-
-### Authentication Failed (Requires Re-authentication)
-
-**Indicators**:
-
-- Test Connection fails with authentication error
-- Health Check shows "Unhealthy" status
-- Catalog requests return authentication errors
-
-**Token status**: Invalid or expired refresh token
-
-**User action**: Re-validate attributes in Krista
-
-## Troubleshooting Authentication Issues
-
-### Issue: "Authentication Failed" on Initial Setup
-
-**Possible Causes**:
-
-- Incorrect Client Id, Client Secret, or Tenant Id
-- Application not properly configured in Azure AD
-- User does not have OneDrive access
-- Required permissions not granted
-
-**Solutions**:
-
-1. Verify all configuration parameters are correct
-2. Check Azure AD app registration settings
-3. Ensure user has OneDrive license
-4. Grant required permissions in Azure AD
-5. Review [Extension Configuration](pages/ExtensionConfiguration.md)
-
-### Issue: "Token Expired" or "Invalid Token"
-
-**Possible Causes**:
-
-- Refresh token expired (after 90 days)
-- User password changed
-- Admin revoked access
-- User revoked consent
-
-**Solutions**:
-
-1. Re-validate attributes in Krista
-2. Complete authentication flow again
-3. Check Azure AD sign-in logs for details
-4. Verify user account is active
-
-### Issue: "Insufficient Permissions"
-
-**Possible Causes**:
-
-- Required permissions not granted to application
-- User does not have necessary OneDrive permissions
-- Conditional access policies blocking access
-
-**Solutions**:
-
-1. Verify all required permissions are granted in Azure AD
-2. Ensure admin consent is provided if required
-3. Check user's OneDrive access level
-4. Review conditional access policies
-
-### Issue: "Consent Required"
-
-**Possible Causes**:
-
-- User has not consented to application permissions
-- Admin consent required but not provided
-- Consent was revoked
-
-**Solutions**:
-
-1. Re-validate attributes to trigger consent flow
-2. Request admin consent if required
-3. Check Azure AD app permissions configuration
-
-## Security Considerations
-
-### Token Security
-
-- **Tokens are encrypted** at rest in Krista storage
-- **Tokens are transmitted** over HTTPS only
-- **Tokens are not logged** in plain text
-- **Tokens are scoped** to minimum required permissions
-
-### Best Practices
-
-1. **Regular Re-authentication**: Re-validate attributes every 60-90 days
-2. **Monitor Access**: Review Azure AD sign-in logs regularly
-3. **Rotate Secrets**: Update Client Secret periodically
-4. **Limit Scope**: Only grant necessary permissions
-5. **Use Conditional Access**: Implement Azure AD conditional access policies
-
-### Compliance
-
-The authentication implementation complies with:
-
-- OAuth 2.0 RFC 6749
-- Microsoft Identity Platform best practices
-- GDPR data protection requirements
-- SOC 2 security standards
-
-## Token Lifecycle Diagram
-
-```
-[Initial Setup]
-     ↓
-[User Login & Consent] → [Authorization Code]
-     ↓
-[Exchange Code] → [Access Token + Refresh Token]
-     ↓
-[Store Tokens Securely]
-     ↓
-[Use Access Token for API Calls]
-     ↓
-[Access Token Expires?]
-     ↓ Yes
-[Use Refresh Token] → [New Access Token]
-     ↓
-[Continue API Calls]
-     ↓
-[Refresh Token Expires?]
-     ↓ Yes
-[Re-authentication Required] → [User Login & Consent]
-```
-
-## Monitoring Authentication Health
-
-### Using Health Check
-
-The [Health Check](pages/HealthCheck.md) catalog request provides authentication status:
-
-**Output Fields**:
-
-- **Is Healthy**: Overall health status
-- **Token Status**: Current token validity
-- **Health Status**: Detailed health information
-
-**Recommended Frequency**: Check health before critical operations
-
-### Using Test Connection
-
-The [Test Connection](pages/TestConnection.md) catalog request verifies connectivity:
-
-**Output Fields**:
-
-- **Is Successful**: Connection status
-- **Message**: Success or error details
-
-**Recommended Use**: After configuration changes or authentication errors
-
-## Next Steps
-
-After understanding authentication:
-
-1. **Configure the extension** using [Extension Configuration](pages/ExtensionConfiguration.md)
-2. **Create Azure AD app** following [Creating Microsoft App](pages/CreatingMicrosoftApp.md)
-3. **Test connection** using [Test Connection](pages/TestConnection.md)
-4. **Monitor health** using [Health Check](pages/HealthCheck.md)
-
-## See Also
-
-- [Extension Configuration](pages/ExtensionConfiguration.md) - Configuration parameters
-- [Creating Microsoft App](pages/CreatingMicrosoftApp.md) - Azure AD app setup
-- [Save Configuration](pages/SaveConfiguration.md) - Validate and save credentials
-- [Test Connection](pages/TestConnection.md) - Verify connectivity
-- [Health Check](pages/HealthCheck.md) - Check authentication health
-
+| Error | Likely Cause | Fix |
+|---|---|---|
+| `AADSTS50126` | Wrong password or account | Re-enter credentials or reset password |
+| `AADSTS70008` / `AADSTS700082` | Refresh token expired | Click **Authorize** to re-authenticate |
+| `AADSTS7000215` | Invalid Client Secret | Regenerate the secret in Azure and update |
+| `AADSTS7000222` | Client Secret expired | Create a new secret in Azure and update |
+| `AADSTS500011` | Redirect URI not registered | Ensure the redirect URI registered in Azure includes the extension ID path: `{routing-url}/{extensionId}/rest/onedrive/callback` |
+| `AADSTS500112` | Redirect URI mismatch between authorize and token exchange | Re-save your credentials in the Authentication tab — this can happen when credentials were saved before the redirect URI was correctly persisted |
+| `AADSTS16000` | Invalid token | Sign out and re-authorize the connection |
+| `Insufficient privileges` | Missing API permissions or no admin consent | Add permissions and grant admin consent in Azure |

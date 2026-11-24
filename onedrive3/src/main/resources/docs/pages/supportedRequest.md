@@ -97,7 +97,36 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File has been copied successfully                                   |
 | Success            | Yes/No             | Yes                                                                 |
 
-#### 2. Delete
+#### 2. Copy With Name
+
+- **Description**: Atomically copies a file into the target folder with a specified name, avoiding renames and preventing
+  collisions during parallel execution.
+- **Input Parameters**:
+
+| **Parameter Name** | **Parameter Type** | **Mandatory** | **Example**                   |
+|--------------------|--------------------|---------------|-------------------------------|
+| Source             | Text               | Yes           | drive/root:/ABC/fileName.xlsx |
+| Target             | Text               | Yes           | drive/root:/Test/TargetFolder |
+| Target File Name   | Text               | Yes           | 2026-04-16_Report.xlsx        |
+| Replace            | Boolean            | No            | True/False                    |
+| Create Folder      | Boolean            | No            | True/False                    |
+
+> #### Notes :
+> - The Copy With Name request supports only for Personal drive files.
+> - For reference, path of Personal drive starts with drive/root:/ and files in Shared drives starts with drives/b!
+    absd69bfb33bvt5wev67b/root:/.
+> - The copy and rename is performed atomically — no intermediate file name is visible to other operations.
+> - This request is useful when multiple workflows may copy to the same folder in parallel and need unique file names.
+
+- **Output**:
+
+| **Parameter Name** | **Parameter Type** | **Example**                                                                    |
+|--------------------|--------------------|--------------------------------------------------------------------------------|
+| File               | Entity             | {name : "2026-04-16_Report.xlsx", extension:".xlsx" , absolutePath : "drive/root:/Test/TargetFolder/2026-04-16_Report.xlsx"} |
+| Message            | Text               | File has been copied successfully                                              |
+| Success            | Yes/No             | Yes                                                                            |
+
+#### 3. Delete
 
 - **Description**: Delete the file in Target path from the cloud storage provider.
 - **Input Parameters**:
@@ -119,7 +148,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File deleted successfully |
 | Success            | Yes/No             | Yes                       |
 
-#### 3. Download as Link
+#### 4. Download as Link
 
 - **Description**: Retrieves the file from the cloud storage and provides a reference as link.
 - **Input Parameters**:
@@ -144,7 +173,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | To Download file, click on the URL |
 | Success            | Yes/No             | Yes                                |
 
-#### 4. Download as File
+#### 5. Download as File
 
 - **Description**: Retrieves the file from the cloud storage and provides a Krista File.
 - **Input Parameters**:
@@ -171,7 +200,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Rich Text          | File is ready to download |
 | Success            | Yes/No             | Yes                       |
 
-#### 5. Get Info
+#### 6. Get Info
 
 - **Description**: Accepts Source of File and return Task ID which will further used in Get Info Result catalog request
   to retrieve folder information.
@@ -193,7 +222,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 |--------------------|--------------------|--------------------------|
 | Task ID            | Text               | bdcqwveb84yt4y43y84yt284 |
 
-#### 6. Get Info Result
+#### 7. Get Info Result
 
 - **Description**: Accepts Task ID and retrieves key information around a single folder in the cloud storage.
 - **Input Parameters**:
@@ -226,7 +255,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message                        | Text               | Folder information fetch successfully |
 | Success                        | Yes/No             | Yes                                   |
 
-#### 7. Get Result
+#### 8. Get Result
 
 - **Description**:This method accepts a Task ID generated from the List of Files, List of Folders &
 - Search By Permissions method and returns the corresponding list of files and folders.
@@ -248,7 +277,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File information                                                         |                             |
 | Success            | Yes/No             | Yes                                                                      |                             |
 
-#### 8. List Files
+#### 9. List Files
 
 - **Description**: Produces a non-recursive list of files that is present within the folder denoted by the source path.
 - **Input Parameters**:
@@ -272,7 +301,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 |--------------------|--------------------|--------------------------|
 | Task ID            | Text               | bdcqwveb84yt4y43y84yt284 |
 
-#### 9. List Folders
+#### 10. List Folders
 
 - **Description**: Produces a non-recursive list of folders that is present within the folder denoted by the source
   path.
@@ -296,7 +325,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 |--------------------|--------------------|--------------------------|
 | Task ID            | Text               | bdcqwveb84yt4y43y84yt284 |
 
-#### 10. Move
+#### 11. Move
 
 - **Description**: Move a file on the drive from the source to the target, where both denote full file paths.
 - **Input Parameters**:
@@ -326,7 +355,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File has been moved successfully                                       |
 | Success            | Yes/No             | Yes                                                                    |
 
-#### 11. Read
+#### 12. Read
 
 - **Description**: Read the content of the file as plain text. If the file is too big or cannot be accessed this should
   be reflected in the success and message variables produced. Content in that case should be empty.
@@ -350,7 +379,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File found                |
 | Success            | Yes/No             | Yes                       |
 
-#### 12. Rename
+#### 13. Rename
 
 - **Description**: Rename the file located at the source file path to the given name.
 - **Input Parameters**:
@@ -376,7 +405,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 > - For reference, path of Personal drive starts with drive/root:/ and files in Shared drives starts with drives/b!
     absd69bfb33bvt5wev67b/root:/.
 
-#### 13. Share File
+#### 14. Share File
 
 - **Description**: Share the file denoted by source with the given users identified by their email address applying the
   provided Permissions.
@@ -404,7 +433,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File Has been shared Successfully                                      |
 | Success            | Yes/No             | Yes                                                                    |
 
-#### 14. Write
+#### 15. Write
 
 - **Description**: Upload the content of the file from the media server to the cloud storage at target path. Produced
   File Entity represent the file in the cloud storage.
@@ -431,7 +460,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File uploaded successfully                                             |
 | Success            | Yes/No             | Yes                                                                    |
 
-#### 15. Write Text
+#### 16. Write Text
 
 - **Description**: Uploads the file content to the cloud storage at the given target location as a plain text file.
 - **Input Parameters**:
@@ -456,7 +485,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 | Message            | Text               | File uploaded successfully                                             |
 | Success            | Yes/No             | Yes                                                                    |
 
-#### 16. Changes Since
+#### 17. Changes Since
 
 - **Description**: This endpoint produces a list of recent updates within a specified folder since a given date. The
   updates include information about the path, file status (e.g., Created, Updated, Deleted), and can be filtered using
@@ -487,7 +516,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 > - For reference, path of Personal drive starts with drive/root:/ and files in Shared drives starts with drives/b!
     absd69bfb33bvt5wev67b/root:/.
 
-#### 17. When a File is Changed
+#### 18. When a File is Changed
 
 - **Description**: Monitors the Cloud Storage for changes. When a change arrives and the affected files/folders match
   the source path and event type, the event will be triggered.
@@ -518,7 +547,7 @@ Krista OneDrive extension supports the following Catalog Requests:
 > - For reference, path of Personal drive starts with drive/root:/ and files in Shared drives starts with drives/b!
     absd69bfb33bvt5wev67b/root:/.
 
-#### 18. Create Folder
+#### 19. Create Folder
 
 - **Description** Accept Folder Name and Path as input and create folder at given path.
 - **Input Parameters**:

@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.catalog.entities;
@@ -99,7 +99,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterSourceFileCopy(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,Source:Text,Target: Text,Replace:Boolean,Create Folder:Boolean,isTarget: Boolean}"
+            type = "{ Re-enter: Boolean, stateId: Text,Source:Text,Target: Text,Replace:Boolean,Create Folder:Boolean,isTarget: Boolean}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_COPY);
@@ -112,10 +112,10 @@ public class ManagementAreaSubCatalogRequest {
     )
 
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
     public ExtensionResponse handleReEnterSourceFileCopy(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source:Text,Target: Text,Replace:Boolean,Create Folder:Boolean,isTarget: Boolean}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source:Text,Target: Text,Replace:Boolean,Create Folder:Boolean,isTarget: Boolean}") Map<String, Object> map) {
 
         String sourcePath = (String) map.get(OneDriveFieldsConstants.SOURCE);
 
@@ -150,7 +150,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileDeletion(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,target: Text}"
+            type = "{ Re-enter: Boolean, stateId: Text,target: Text}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_TARGET_FILE_DELETION);
@@ -163,9 +163,9 @@ public class ManagementAreaSubCatalogRequest {
     )
 
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     public ExtensionResponse handleReenterFileName(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Target: Text}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Target: Text}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.TARGET);
 
@@ -191,7 +191,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileDownload(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,source: Text}"
+            type = "{ Re-enter: Boolean, stateId: Text,source: Text}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_DOWNLOAD);
@@ -203,10 +203,10 @@ public class ManagementAreaSubCatalogRequest {
             type = CatalogRequest.Type.CHANGE_SYSTEM
     )
     @Field.File(name = "Krista File", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the download operation result, any errors encountered, or download links for files exceeding size limits'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the download operation result, any errors encountered, or download links for files exceeding size limits'")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the file download was successful. Returns true even when large files are provided as links instead of direct downloads.'")})
     public ExtensionResponse handleReEnterTargetFileDownload(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source: Text}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source: Text}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.SOURCE);
 
@@ -223,7 +223,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetLinkDownload(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,source: Text}"
+            type = "{ Re-enter: Boolean, stateId: Text,source: Text}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_LINK_DOWNLOAD);
@@ -236,10 +236,10 @@ public class ManagementAreaSubCatalogRequest {
     )
 
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     @Field(name = "Link", type = "RichText", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     public ExtensionResponse handleReEnterTargetLinkDownload(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source: Text}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source: Text}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.SOURCE);
 
@@ -265,7 +265,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterSourceFileMove(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,isTarget: Boolean, Source:Text,Target: Text}"
+            type = "{ Re-enter: Boolean, stateId: Text,isTarget: Boolean, Source:Text,Target: Text}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_MOVE);
@@ -279,9 +279,9 @@ public class ManagementAreaSubCatalogRequest {
 
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     public ExtensionResponse handleReEnterSourceFileMove(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,isTarget: Boolean, Source:Text,Target: Text}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,isTarget: Boolean, Source:Text,Target: Text}") Map<String, Object> map) {
 
         String sourcePath = (String) map.get(OneDriveFieldsConstants.SOURCE);
 
@@ -314,7 +314,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileRead(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,source: Text}"
+            type = "{ Re-enter: Boolean, stateId: Text,source: Text}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_READ);
@@ -327,9 +327,9 @@ public class ManagementAreaSubCatalogRequest {
     )
     @Field(name = "Content", type = "Paragraph", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     public ExtensionResponse handleReEnterTargetFileRead(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source: Text}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source: Text}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.SOURCE);
 
@@ -355,7 +355,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileRename(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,Source Path: Text,Target File Name:Text,isSource:Boolean}"
+            type = "{ Re-enter: Boolean, stateId: Text,Source Path: Text,Target File Name:Text,isSource:Boolean}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_RENAME);
@@ -368,9 +368,9 @@ public class ManagementAreaSubCatalogRequest {
     )
 
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     public ExtensionResponse handleReEnterTargetFileRename(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source Path: Text,Target File Name:Text,isSource:Boolean}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source Path: Text,Target File Name:Text,isSource:Boolean}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.TARGET_FILE_NAME);
 
@@ -401,7 +401,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileShare(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,source: Text,Share:[ { User: Email, Permissions: PickOne(Read|Write|Read and Write|Own) } ]}"
+            type = "{ Re-enter: Boolean, stateId: Text,source: Text,Share:[ { User: Email, Permissions: PickOne(Read|Write|Read and Write|Own) } ]}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_SHARE);
@@ -413,10 +413,10 @@ public class ManagementAreaSubCatalogRequest {
             type = CatalogRequest.Type.CHANGE_SYSTEM
     )
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
     public ExtensionResponse handleReEnterTargetFileShare(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source: Text,Share:[ { User: Email, Permissions: PickOne(Read|Write|Read and Write|Own) } ]}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source: Text,Share:[ { User: Email, Permissions: PickOne(Read|Write|Read and Write|Own) } ]}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.SOURCE);
 
@@ -444,7 +444,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileWrite(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,Target Path:Text, Custom Name: Text, Krista File: File, isTarget:boolean}"
+            type = "{ Re-enter: Boolean, stateId: Text,Target Path:Text, Custom Name: Text, Krista File: File, isTarget:boolean}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_TARGET_FILE_WRITE);
@@ -457,9 +457,9 @@ public class ManagementAreaSubCatalogRequest {
     )
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the file upload was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the upload operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the upload operation result or any errors encountered'")})
     public ExtensionResponse handleReEnterTargetFileWrite(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Target Path:Text,Custom Name: Text, Krista File: File, isTarget:boolean}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Target Path:Text,Custom Name: Text, Krista File: File, isTarget:boolean}") Map<String, Object> map) {
         String customName = (String) map.get(OneDriveFieldsConstants.CUSTOM_NAME);
         String filename = (String) map.get(OneDriveFieldsConstants.TARGET_PATH);
 
@@ -493,7 +493,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileUpload(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,File Content: Text,Target Path:Text}"
+            type = "{ Re-enter: Boolean, stateId: Text,File Content: Text,Target Path:Text}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_TARGET_FILE_UPLOAD);
@@ -508,11 +508,11 @@ public class ManagementAreaSubCatalogRequest {
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the text file was successfully created'")
     })
     @Field.Text(name = "Message", required = false, attributes = {
-            @Attribute(name = "visualWidth", value = "S"),
+            @Attribute(name = "visualWidth", value = "L"),
             @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")
     })
     public ExtensionResponse handleReEnterTargetFileUpload(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,File Content: Text,Target Path:Text}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,File Content: Text,Target Path:Text}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.TARGET_PATH);
 
@@ -540,7 +540,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterSourceFileHistory(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,Source Path: Text,Search:Text,Since:Date}"
+            type = "{ Re-enter: Boolean, stateId: Text,Source Path: Text,Search:Text,Since:Date}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_SOURCE_FILE_HISTORY);
@@ -554,9 +554,9 @@ public class ManagementAreaSubCatalogRequest {
 
     @Field.Desc(name = "Result", type = "[ { Path: Text, Date: Date, Update: PickOne(Created|Updated|Deleted) } ]", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the change history was successfully retrieved'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse handleReEnterSourceFileHistory(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Source Path: Text,Search:Text,Since:Date}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Source Path: Text,Search:Text,Since:Date}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.SOURCE_PATH);
 
@@ -584,7 +584,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterCreateFolder(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,Target Path: Text,Folder Name: Text,isFolderName: Boolean}"
+            type = "{ Re-enter: Boolean, stateId: Text,Target Path: Text,Folder Name: Text,isFolderName: Boolean}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_CREATE_FOLDER);
@@ -595,11 +595,11 @@ public class ManagementAreaSubCatalogRequest {
             description = "Handle reenter File name",
             type = CatalogRequest.Type.CHANGE_SYSTEM
     )
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")})
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     public ExtensionResponse handleReEnterCreateFolder(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Target Path: Text,Folder Name: Text,isFolderName: Boolean}") Map<String, Object> map) { //Sheet Name: Text, Format Type: Text, krista File: File
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Target Path: Text,Folder Name: Text,isFolderName: Boolean}") Map<String, Object> map) { //Sheet Name: Text, Format Type: Text, krista File: File
 
         String targetPath = (String) map.get(OneDriveFieldsConstants.TARGET_PATH);
 
@@ -631,7 +631,7 @@ public class ManagementAreaSubCatalogRequest {
     )
     public ExtensionResponse confirmReEnterTargetFileWrite_CustomName(@Field.Desc(
             name = "inputMap",
-            type = "{ Reenter: Boolean, stateId: Text,Target Path:Text, Custom Name: Text, Krista File: File}"
+            type = "{ Re-enter: Boolean, stateId: Text,Target Path:Text, Custom Name: Text, Krista File: File}"
     ) Map<String, Object> map) {
 
         return getExtensionResponse(map, SubCatalogConstants.HANDLE_REENTER_TARGET_FILE_WRITE_Custom_Name);
@@ -645,9 +645,9 @@ public class ManagementAreaSubCatalogRequest {
 
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the file upload was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the upload operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the upload operation result or any errors encountered'")})
     public ExtensionResponse handleReEnterTargetFileWriteCustomName(
-            @Field.Desc(name = "inputMap", type = "{ Reenter: Boolean, stateId: Text,Target Path:Text, Custom Name: Text,Krista File: File}") Map<String, Object> map) {
+            @Field.Desc(name = "inputMap", type = "{ Re-enter: Boolean, stateId: Text,Target Path:Text, Custom Name: Text,Krista File: File}") Map<String, Object> map) {
 
         String filename = (String) map.get(OneDriveFieldsConstants.TARGET_PATH);
 

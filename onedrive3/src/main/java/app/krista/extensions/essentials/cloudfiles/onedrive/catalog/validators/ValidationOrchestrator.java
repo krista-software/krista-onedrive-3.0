@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.catalog.validators;
@@ -58,7 +58,10 @@ public class ValidationOrchestrator {
                 throw new IllegalArgumentException("No validator found for resource: " + resourceKey);
             }
 
-            String confirmStepMessage = validator.getConfirmationStepMessage(errorMessage + " " + resourceValue, resources);
+            // Pass only the plain resource path: the validator's confirmation template already wraps
+            // its argument in a user-facing message, so concatenating errorMessage here would embed one
+            // error message inside another (double-wrapping) and add a stray leading space when blank.
+            String confirmStepMessage = validator.getConfirmationStepMessage(resourceValue, resources);
             String fetchStepMessage = "";
             String errMessage = validator.getErrMessage(resourceValue);
             String fieldType = validator.getFieldType();

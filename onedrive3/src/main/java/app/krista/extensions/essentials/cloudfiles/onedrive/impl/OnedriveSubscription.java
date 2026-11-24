@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -38,6 +38,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -59,7 +60,14 @@ public class OnedriveSubscription {
      * @param routingUrl routing url to get the mail alert
      * @param provider   {@link GraphServiceClientProvider} object to get the subscriptions from microsoft
      */
-    public static void createSubscription(String routingUrl, GraphServiceClientProvider provider) {
+    /**
+     * Creates a subscription and returns it (null if already subscribed).
+     *
+     * @param routingUrl routing url to get the mail alert
+     * @param provider   GraphServiceClientProvider for Graph API access
+     * @return the created Subscription, or null if already subscribed
+     */
+    public static Subscription createSubscription(String routingUrl, GraphServiceClientProvider provider) {
         int maxRetries = 3;
         int retryDelaySeconds = 5;
 
@@ -67,9 +75,15 @@ public class OnedriveSubscription {
             try {
                 Subscription subscription = prepareSubscription(routingUrl);
                 SubscriptionCollectionPage collectionPage = provider.getGraphServiceClientForAdmin().subscriptions().buildRequest().get();
-                if (isSubscribed(collectionPage, subscription)) return;
-                provider.getGraphServiceClientForAdmin().subscriptions().buildRequest().post(subscription);
-                return;
+                if (isSubscribed(collectionPage, subscription)) return null;
+                Subscription createdSubscription = provider.getGraphServiceClientForAdmin().subscriptions().buildRequest().post(subscription);
+                LOGGER.info("Subscription created successfully - subscriptionId: {}, resource: {}, notificationUrl: {}, changeType: {}, expirationDateTime: {}",
+                        createdSubscription.id,
+                        createdSubscription.resource,
+                        createdSubscription.notificationUrl,
+                        createdSubscription.changeType,
+                        createdSubscription.expirationDateTime);
+                return createdSubscription;
             } catch (ClientException | ParseException e) {
                 if (attempt == maxRetries) {
                     throw new RuntimeException("Failed to create subscription after " + maxRetries + " attempts", e);
@@ -82,9 +96,17 @@ public class OnedriveSubscription {
                 }
             }
         }
+        return null;
     }
 
-    public void createSubscriptionFromClientSide(String routingUrl, GraphServiceClientProvider provider) {
+    /**
+     * Creates a subscription from client side and returns it (null if already subscribed).
+     *
+     * @param routingUrl routing url to get the mail alert
+     * @param provider   GraphServiceClientProvider for Graph API access
+     * @return the created Subscription, or null if already subscribed
+     */
+    public Subscription createSubscriptionFromClientSide(String routingUrl, GraphServiceClientProvider provider) {
         int maxRetries = 3;
         int retryDelaySeconds = 5;
 
@@ -92,9 +114,15 @@ public class OnedriveSubscription {
             try {
                 Subscription subscription = prepareSubscription(routingUrl);
                 SubscriptionCollectionPage collectionPage = provider.getGraphServiceClientForUser(false, authorizationContext.getAuthorizedAccount().getAccountId()).subscriptions().buildRequest().get();
-                if (isSubscribed(collectionPage, subscription)) return;
-                provider.getGraphServiceClientForUser(false, authorizationContext.getAuthorizedAccount().getAccountId()).subscriptions().buildRequest().post(subscription);
-                return;
+                if (isSubscribed(collectionPage, subscription)) return null;
+                Subscription createdSubscription = provider.getGraphServiceClientForUser(false, authorizationContext.getAuthorizedAccount().getAccountId()).subscriptions().buildRequest().post(subscription);
+                LOGGER.info("Subscription created successfully - subscriptionId: {}, resource: {}, notificationUrl: {}, changeType: {}, expirationDateTime: {}",
+                        createdSubscription.id,
+                        createdSubscription.resource,
+                        createdSubscription.notificationUrl,
+                        createdSubscription.changeType,
+                        createdSubscription.expirationDateTime);
+                return createdSubscription;
             } catch (ClientException | ParseException | IOException e) {
                 if (attempt == maxRetries) {
                     throw new RuntimeException("Failed to create subscription after " + maxRetries + " attempts", e);
@@ -107,6 +135,7 @@ public class OnedriveSubscription {
                 }
             }
         }
+        return null;
     }
 
     private static boolean isSubscribed(SubscriptionCollectionPage collectionPage, Subscription subscription) {
@@ -164,6 +193,38 @@ public class OnedriveSubscription {
         } catch (ClientException | ParseException cause) {
             throw new RuntimeException(cause);
         }
+    }
+
+    /**
+     * Deletes a subscription from Microsoft Graph by its ID.
+     * Lists all subscriptions and deletes the matching one.
+     *
+     * @param provider       GraphServiceClientProvider for API access
+     * @param subscriptionId The subscription ID to delete
+     */
+    public static void deleteSubscription(GraphServiceClientProvider provider, String subscriptionId) {
+        try {
+            SubscriptionCollectionPage collectionPage = provider.getGraphServiceClientForAdmin().subscriptions().buildRequest().get();
+            if (collectionPage != null && !collectionPage.getCurrentPage().isEmpty()) {
+                for (Subscription subscription : collectionPage.getCurrentPage()) {
+                    if (subscription.id != null && subscription.id.equals(subscriptionId)) {
+                        provider.getGraphServiceClientForAdmin().subscriptions(Objects.requireNonNull(subscription.id)).buildRequest().delete();
+                    }
+                }
+            }
+        } catch (ClientException cause) {
+            LOGGER.error("Error while deleting subscription : {}", cause.getMessage());
+        }
+    }
+
+    /**
+     * Calculates the expiration timestamp for a subscription.
+     * Sets expiration to 28 days from now (OneDrive maximum).
+     *
+     * @return expiration timestamp in milliseconds since epoch
+     */
+    public static long calculateExpirationTimestamp() {
+        return System.currentTimeMillis() + TimeUnit.DAYS.toMillis(28);
     }
 
 }

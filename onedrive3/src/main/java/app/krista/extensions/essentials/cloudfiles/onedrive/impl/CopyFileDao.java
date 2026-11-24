@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -53,6 +53,7 @@ public class CopyFileDao {
     private static final String MICROSOFT_GRAPH_CONFLICT_BEHAVIOR_REPLACE = "?@microsoft.graph.conflictBehavior=replace";
     private static final Logger LOGGER = LoggerFactory.getLogger(CopyFileDao.class);
 
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final OperationsManagementDao operationsManagementDao;
     private final OnedriveAttributes onedriveAttributes;
@@ -61,16 +62,26 @@ public class CopyFileDao {
 
     @Inject
     public CopyFileDao(GraphServiceClientProviderFactory factory, OperationsManagementDao operationsManagementDao, OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
-        this(factory.create(), operationsManagementDao, onedriveAttributes, validationTypeUtil, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.operationsManagementDao = operationsManagementDao;
+        this.onedriveAttributes = onedriveAttributes;
+        this.validationTypeUtil = validationTypeUtil;
+        this.telemetryHelper = telemetryHelper;
     }
 
     public CopyFileDao(GraphServiceClientProvider provider, OperationsManagementDao operationsManagementDao,
                        OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.operationsManagementDao = operationsManagementDao;
         this.onedriveAttributes = onedriveAttributes;
         this.validationTypeUtil = validationTypeUtil;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -274,7 +285,7 @@ public class CopyFileDao {
                     if (!(boolean) check.get(Constants.IS_FILE_EXIST)) {
                         LOGGER.info("CopyFileDao.createFolderInPath - Creating folder: {}", folderName);
                         String parentPath = FileUtil.getParentPath(relativePathBuilder.toString());
-                        DriveItemRequestBuilder builder = FileUtil.getRootUserRequestBuilder(provider);
+                        DriveItemRequestBuilder builder = FileUtil.getRootUserRequestBuilder(createProvider());
                         if (!parentPath.isEmpty()) {
                             builder = builder.itemWithPath(FileUtil.getParentPath(relativePathBuilder.toString()));
                         }
@@ -326,14 +337,19 @@ public class CopyFileDao {
      */
     public ExtensionResponse copyFile(String source, String target, Boolean replace, boolean createFolder,
                                       boolean isTargetReentered, boolean isSourceReentered) {
-        // Default to allowRetry = true for backward compatibility
-        return copyFile(source, target, replace, createFolder, isTargetReentered, isSourceReentered, true);
+        return copyFile(source, target, replace, createFolder, isTargetReentered, isSourceReentered, true, null);
+    }
+
+    public ExtensionResponse copyFile(String source, String target, Boolean replace, boolean createFolder,
+                                      boolean isTargetReentered, boolean isSourceReentered, Boolean allowRetry) {
+        return copyFile(source, target, replace, createFolder, isTargetReentered, isSourceReentered, allowRetry, null);
     }
 
     /**
-     * Copies a file from the source path to the target path with retry option.
-     * This method handles validation of source and target paths, checks for file existence,
-     * and executes the copy operation using the Microsoft Graph API.
+     * Copies a file from the source path to the target path with retry option and optional target file name.
+     * When targetFileName is provided, the Graph API copy creates the file with that name directly,
+     * eliminating the need for a separate rename step. This is critical for parallel execution
+     * where multiple copies to the same folder would otherwise create intermediate name collisions.
      *
      * @param source            The source path of the file to be copied
      * @param target            The target path where the file should be copied to
@@ -342,10 +358,12 @@ public class CopyFileDao {
      * @param isTargetReentered Flag indicating if the target path has been reentered after validation
      * @param isSourceReentered Flag indicating if the source path has been reentered after validation
      * @param allowRetry        Whether to allow retry on validation failure
+     * @param targetFileName    Optional: if provided, the copied file is created with this name directly
      * @return ExtensionResponse containing the result of the copy operation
      */
     public ExtensionResponse copyFile(String source, String target, Boolean replace, boolean createFolder,
-                                      boolean isTargetReentered, boolean isSourceReentered, Boolean allowRetry) {
+                                      boolean isTargetReentered, boolean isSourceReentered, Boolean allowRetry,
+                                      String targetFileName) {
         long startTime = System.currentTimeMillis();
         telemetryHelper.incrementCount(TelemetryConstants.TELEMETRY_COPY_FILE);
 
@@ -407,8 +425,8 @@ public class CopyFileDao {
                     DriveItem targetDriveItem = (DriveItem) targetResponse.get(Constants.DRIVE_ITEM);
                     LOGGER.debug("CopyFileDao.copyFile - Target DriveItem retrieved: {}", targetDriveItem.name);
 
-                    LOGGER.info("CopyFileDao.copyFile - Executing copy operation from {} to {}", source, target);
-                    executeCopy(sourceDriveItem, targetDriveItem, replace, payload);
+                    LOGGER.info("CopyFileDao.copyFile - Executing copy operation from {} to {}, targetFileName: {}", source, target, targetFileName);
+                    executeCopy(sourceDriveItem, targetDriveItem, replace, payload, targetFileName);
 
                     if (Constants.FILE_ALREADY_EXIST.equals(payload.get(Constants.MESSAGE))) {
                         LOGGER.debug("CopyFileDao.copyFile - File already exists at target location");
@@ -512,7 +530,8 @@ public class CopyFileDao {
      * @param payload The response payload to be populated with the result
      * @throws IOException If an I/O error occurs during the API request
      */
-    private void executeCopy(DriveItem source, DriveItem target, Boolean replace, Map<String, Object> payload) throws IOException {
+    private void executeCopy(DriveItem source, DriveItem target, Boolean replace, Map<String, Object> payload,
+                             String targetFileName) throws IOException {
         if (source != null) {
 
             String endpoint = source.id + "/copy";
@@ -521,7 +540,7 @@ public class CopyFileDao {
             }
             Response copyResponse = getRestClient(null).
                     executeHttpMethods(endpoint, Constants.POST_METHOD,
-                            createRequestBody(target.id));
+                            createRequestBody(target.id, targetFileName));
             prepareCopyResponse(copyResponse, payload);
 
         }
@@ -540,7 +559,7 @@ public class CopyFileDao {
                 String itemID = moveResponse.request().url()
                         .pathSegments()
                         .getLast();
-                DriveItem driveItem = FileUtil.getUserRequestBuilderWithItemId(provider, null, itemID)
+                DriveItem driveItem = FileUtil.getUserRequestBuilderWithItemId(createProvider(), null, itemID)
                         .buildRequest().expand(Constants.PERMISSIONS).get();
 
                 ResponseUtil.fileEntityResponse(CatalogTypes.fromFile(new FileImpl(driveItem, null, onedriveAttributes))
@@ -569,34 +588,59 @@ public class CopyFileDao {
      */
     private void prepareCopyResponse(Response response, Map<String, Object> payload) throws IOException {
         if (response != null && response.code() == 202) {
-            try (Response statusResponse = getRestClient(null).get(response.header("Location"))) {
-                if (statusResponse.code() == 200) {
-                    final ResponseBody statusResponseBody = statusResponse.body();
-                    if (statusResponseBody != null) {
-                        String responseBodyString = statusResponseBody.string(); // Read the response body as a string
-                        JsonObject jsonObject = Constants.GSON.fromJson(responseBodyString, JsonObject.class);
+            String monitorUrl = response.header("Location");
+            final int maxAttempts = 10;
 
-                        if (jsonObject.isJsonObject()) {
-                            String status = jsonObject.getAsJsonPrimitive("status").getAsString();
-                            if ("completed".equalsIgnoreCase(status)) {
-                                DriveItem driveItem = FileUtil
-                                        .getUserRequestBuilderWithItemId(provider
-                                                , null
-                                                , jsonObject.getAsJsonPrimitive("resourceId").getAsString().trim())
-                                        .buildRequest().expand(Constants.PERMISSIONS).get();
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                try (Response statusResponse = getRestClient(null).get(monitorUrl)) {
+                    if (statusResponse != null && statusResponse.code() == 200) {
+                        final ResponseBody statusResponseBody = statusResponse.body();
+                        if (statusResponseBody != null) {
+                            String responseBodyString = statusResponseBody.string();
+                            JsonObject jsonObject = Constants.GSON.fromJson(responseBodyString, JsonObject.class);
 
-                                ResponseUtil.fileEntityResponse(CatalogTypes
-                                                .fromFile(new FileImpl(driveItem, null, onedriveAttributes))
-                                        , true, Constants.FILE_HAS_BEEN_COPIED, payload);
-                            } else if ("inProgress".equalsIgnoreCase(status)) {
-                                ResponseUtil.errorResponse(true, Constants.COPY_IN_PROGRESS, payload);
-                            } else if ("failed".equalsIgnoreCase(status)) {
-                                ResponseUtil.errorResponse(false, Constants.FILE_ALREADY_EXIST, payload);
+                            if (jsonObject.isJsonObject()) {
+                                String status = jsonObject.getAsJsonPrimitive("status").getAsString();
+                                LOGGER.info("CopyFileDao - Copy status check attempt {}/{}: status={}",
+                                        attempt, maxAttempts, status);
+
+                                if ("completed".equalsIgnoreCase(status)) {
+                                    DriveItem driveItem = FileUtil
+                                            .getUserRequestBuilderWithItemId(provider
+                                                    , null
+                                                    , jsonObject.getAsJsonPrimitive("resourceId").getAsString().trim())
+                                            .buildRequest().expand(Constants.PERMISSIONS).get();
+
+                                    ResponseUtil.fileEntityResponse(CatalogTypes
+                                                    .fromFile(new FileImpl(driveItem, null, onedriveAttributes))
+                                            , true, Constants.FILE_HAS_BEEN_COPIED, payload);
+                                    return;
+                                } else if ("failed".equalsIgnoreCase(status)) {
+                                    LOGGER.error("CopyFileDao - Copy operation failed on attempt {}", attempt);
+                                    ResponseUtil.errorResponse(false, Constants.FILE_ALREADY_EXIST, payload);
+                                    return;
+                                }
+                                // status is "inProgress" — wait and retry
                             }
                         }
                     }
                 }
+
+                if (attempt < maxAttempts) {
+                    LOGGER.info("CopyFileDao - Copy still in progress, waiting 2s before retry {}/{}",
+                            attempt + 1, maxAttempts);
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
             }
+
+            // Exhausted all attempts — still in progress
+            LOGGER.error("CopyFileDao - Copy did not complete after {} attempts ({}s)", maxAttempts, maxAttempts * 2);
+            ResponseUtil.errorResponse(true, Constants.COPY_IN_PROGRESS, payload);
         } else {
             ResponseUtil.errorResponse(false, Constants.ERROR_DURING_SERVICE, payload);
         }
@@ -610,23 +654,33 @@ public class CopyFileDao {
      * @return RequestBody containing the JSON payload for the API request
      */
     public RequestBody createRequestBody(String folderId) {
-        String payload = getParentReferenceJson(folderId);
+        return createRequestBody(folderId, null);
+    }
+
+    public RequestBody createRequestBody(String folderId, String targetFileName) {
+        String payload = getParentReferenceJson(folderId, targetFileName);
         MediaType jsonMediaType = MediaType.parse(Constants.APPLICATION_JSON);
         return RequestBody.create(jsonMediaType, payload);
     }
 
     /**
      * Generates the JSON string for the parent reference in copy and move operations.
-     * This JSON specifies the target folder ID.
+     * When targetFileName is provided, includes the "name" field so the Graph API
+     * creates the copy with the specified name directly — no separate rename needed.
      *
-     * @param folderId The ID of the target folder
-     * @return JSON string representing the parent reference
+     * @param folderId       The ID of the target folder
+     * @param targetFileName Optional name for the copied file (null = use original name)
+     * @return JSON string representing the copy request body
      */
-    private String getParentReferenceJson(String folderId) {
+    private String getParentReferenceJson(String folderId, String targetFileName) {
         JsonObject jsonObject = new JsonObject();
         JsonObject parentReference = new JsonObject();
         parentReference.addProperty("id", folderId);
         jsonObject.add("parentReference", parentReference);
+        if (targetFileName != null && !targetFileName.isBlank()) {
+            jsonObject.addProperty("name", targetFileName);
+            LOGGER.info("CopyFileDao - Copy will use target file name: {}", targetFileName);
+        }
         return jsonObject.toString();
     }
 
@@ -643,8 +697,8 @@ public class CopyFileDao {
             if (target != null && target.contains(Constants.DRIVE_ROOT)) {
                 String path = FileUtil.getRelativeFilePath(target);
                 DriveItem driveItem = path.isEmpty()
-                        ? FileUtil.getRootUserRequestBuilder(provider).buildRequest().get()
-                        : FileUtil.getRootUserRequestBuilder(provider).itemWithPath(path).buildRequest().get();
+                        ? FileUtil.getRootUserRequestBuilder(createProvider()).buildRequest().get()
+                        : FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(path).buildRequest().get();
                 if (driveItem != null) {
                     ResponseUtil.addDriveItem(true, driveItem, response);
                 }
@@ -666,7 +720,7 @@ public class CopyFileDao {
      * @return RestClient for making API requests
      */
     private RestClient getRestClient(String driveId) {
-        return provider.getRestClient(driveId);
+        return createProvider().getRestClient(driveId);
     }
 
     /**

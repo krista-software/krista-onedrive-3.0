@@ -13,24 +13,24 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.catalog;
 
+import app.krista.extension.authorization.MustAuthorizeException;
 import app.krista.extension.executor.ExtensionResponse;
 import app.krista.extension.executor.ExtensionResponseBuilder;
+import app.krista.extension.executor.Invoker;
 import app.krista.extension.impl.anno.Attribute;
 import app.krista.extension.impl.anno.CatalogRequest;
 import app.krista.extension.impl.anno.Domain;
 import app.krista.extension.impl.anno.Field;
-import app.krista.extensions.essentials.cloudfiles.onedrive.OnedriveAttributes;
 import app.krista.extensions.essentials.cloudfiles.onedrive.OnedriveSetUpService;
-import app.krista.extensions.essentials.cloudfiles.onedrive.impl.stores.RefreshTokenStore;
-import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.Constants;
+import app.krista.extensions.essentials.cloudfiles.onedrive.audit.AuditEventType;
+import app.krista.extensions.essentials.cloudfiles.onedrive.audit.OneDriveAuditService;
 
 import javax.inject.Inject;
-import java.util.HashMap;
 import java.util.Map;
 
 @Domain(id = "catEntryDomain_30c63e77-37f2-4a1d-afd8-f6bfda07ad57",
@@ -40,68 +40,17 @@ import java.util.Map;
         ecosystemVersion = "550ba0ed-7f26-4d47-8412-f1910a6ffccd")
 public class SetupArea {
     private final OnedriveSetUpService onedriveSetUpService;
-    private final OnedriveAttributes onedriveAttributes;
-    private final RefreshTokenStore refreshTokenStore;
+    private final OneDriveAuditService auditService;
+    private final String invokerId;
 
     @Inject
-    public SetupArea(OnedriveSetUpService onedriveSetUpService, OnedriveAttributes onedriveAttributes, RefreshTokenStore refreshTokenStore) {
+    public SetupArea(OnedriveSetUpService onedriveSetUpService,
+                     OneDriveAuditService auditService,
+                     Invoker invoker) {
         this.onedriveSetUpService = onedriveSetUpService;
-        this.onedriveAttributes = onedriveAttributes;
-        this.refreshTokenStore = refreshTokenStore;
+        this.auditService = auditService;
+        this.invokerId = invoker.getInvokerId();
     }
-
-
-    /**
-     * Validates and saves OneDrive connection configuration.
-     * This method validates the provided Azure AD credentials and establishes a connection to Microsoft OneDrive.
-     * It performs OAuth 2.0 authentication flow and stores the configuration for subsequent operations.
-     *
-     * @param clientId Application (client) ID from Azure AD app registration
-     * @param clientSecret Client secret value from Azure AD app registration
-     * @param tenantId Directory (tenant) ID from Azure AD
-     * @param email Email address of the OneDrive account to connect to
-     * @return ExtensionResponse containing success status and message indicating whether configuration was saved successfully
-     */
-    @CatalogRequest(
-            id = "localDomainRequest_54ef5f19-7695-4dfc-8613-451a1e79d313",
-            name = "Save Configuration",
-            description = "Validates and saves OneDrive connection configuration including Client ID, Client Secret, Tenant ID, and Email credentials for establishing secure connection to Microsoft OneDrive",
-            area = "Setup",
-            type = CatalogRequest.Type.CHANGE_SYSTEM)
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Status message indicating the result of the configuration save operation'")})
-    @Field.Boolean(name = "Is Successful", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the configuration was successfully saved and validated'")})
-    public ExtensionResponse saveConfiguration(
-            @Field.Text(name = "Client Id", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Application (client) ID from your Azure AD app registration. This identifies your application to Microsoft\\'s identity platform'")}) String clientId,
-            @Field.Text(name = "Client Secret", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Client secret value from your Azure AD app registration. This authenticates your application to Microsoft\\'s identity platform'")}) String clientSecret,
-            @Field.Text(name = "Tenant Id", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Directory (tenant) ID from your Azure AD. This identifies the Azure AD tenant where your app is registered'")}) String tenantId,
-            @Field(name = "Email", type = "Email", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Email address of the OneDrive account to connect to. This should be the same account used to register the application in Azure AD'")}) String email) {
-        Map<String, Object> attributes = Map.of(Constants.CLIENT_ID, clientId, Constants.CLIENT_SECRET, clientSecret,
-                Constants.TENANT_ID, tenantId, Constants.EMAIL, email);
-        boolean isSaved;
-        String message;
-        isSaved = onedriveSetUpService.validateConnectionFromClientSide(attributes);
-        refreshTokenStore.put(Constants.IS_FROM_CATALOG_REQUEST, "true");
-        onedriveAttributes.update(attributes);
-        if (isSaved)
-            message = "User Authenticated Successfully.";
-        else
-            message = "User Authentication Failed. Please check the credentials.";
-
-        Map<String, Object> resultMap = new HashMap<>();
-        resultMap.put("Is Successful", isSaved);
-        resultMap.put("Message", message);
-        return new ExtensionResponseBuilder()
-                .success(resultMap, null, null)
-                .build();
-    }
-
-    /**
-     * Tests the OneDrive connection to verify it is properly established.
-     * This method attempts to connect to Microsoft OneDrive using the saved configuration
-     * and verifies that the connection is working correctly.
-     *
-     * @return ExtensionResponse containing success status and message about the connection test result
-     */
 
     @CatalogRequest(
             id = "localDomainRequest_833eb86f-3c64-4ad4-8042-d20ff1eedb73",
@@ -110,11 +59,19 @@ public class SetupArea {
             area = "Setup",
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Boolean(name = "Is Successful", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the connection test was successful and OneDrive is accessible'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Detailed message about the connection test result, including any error information if the test failed'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Detailed message about the connection test result, including any error information if the test failed'")})
     public ExtensionResponse testConnection() {
+        auditService.startRequest(invokerId, "Test Connection");
         try {
             onedriveSetUpService.testConnection(false);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Test Connection", null, null, null);
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Test Connection",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
         } catch (Exception e) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Test Connection",
+                    e.getMessage(), e.getClass().getSimpleName(), null);
             return new ExtensionResponseBuilder()
                     .success(Map.of("Is Successful", false, "Message", "Failed to connect: " + e.getMessage()), null, null)
                     .build();
@@ -123,14 +80,6 @@ public class SetupArea {
                 .success(Map.of("Is Successful", true, "Message", "Connection Successful"), null, null)
                 .build();
     }
-
-    /**
-     * Performs a health check on the OneDrive extension.
-     * This method verifies the overall health status of the OneDrive integration by checking
-     * connectivity, configuration validity, and system readiness.
-     *
-     * @return ExtensionResponse containing health status information including overall health indicator
-     */
 
     @CatalogRequest(
             id = "localDomainRequest_cb132352-9202-4db6-ae68-e89af67de34b",
@@ -142,6 +91,20 @@ public class SetupArea {
     @Field.Desc(name = "Extension Response Meta", type = "Entity(Extension Response Meta)", required = false)
     @Field.Boolean(name = "Is Healthy", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Overall health status indicator - true if system is operating normally, false if issues are detected'")})
     public ExtensionResponse healthCheck() {
-        return onedriveSetUpService.checkHealth();
+        auditService.startRequest(invokerId, "Health Check");
+        try {
+            ExtensionResponse response = onedriveSetUpService.checkHealth();
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Health Check", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Health Check",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Health Check",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            throw new RuntimeException(cause);
+        }
     }
 }

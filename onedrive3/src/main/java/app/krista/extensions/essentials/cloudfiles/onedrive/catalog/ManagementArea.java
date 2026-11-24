@@ -13,17 +13,22 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.catalog;
 
+import app.krista.extension.authorization.MustAuthorizeException;
 import app.krista.extension.executor.ExtensionResponse;
 import app.krista.extension.executor.ExtensionResponseBuilder;
+import app.krista.extension.executor.Invoker;
 import app.krista.extension.impl.anno.Attribute;
 import app.krista.extension.impl.anno.CatalogRequest;
 import app.krista.extension.impl.anno.Domain;
 import app.krista.extension.impl.anno.Field;
+import app.krista.extensions.essentials.cloudfiles.onedrive.OnedriveSetUpService;
+import app.krista.extensions.essentials.cloudfiles.onedrive.audit.AuditEventType;
+import app.krista.extensions.essentials.cloudfiles.onedrive.audit.OneDriveAuditService;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.ManagementDaoImpl;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.Constants;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.FileUtil;
@@ -37,6 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,16 +63,23 @@ public class ManagementArea {
     private final EventHandler eventHandler;
     private final RequestContext requestContext;
     private final AuthorizationContext authorizationContext;
+    private final OneDriveAuditService auditService;
+    private final OnedriveSetUpService onedriveSetUpService;
+    private final String invokerId;
     private final ExecutorService executorService = Executors.newFixedThreadPool(5);
 
 
     @Inject
     public ManagementArea(ManagementDaoImpl managementDao, EventHandler eventHandler, RequestContext requestContext,
-                          AuthorizationContext authorizationContext) {
+                          AuthorizationContext authorizationContext, OneDriveAuditService auditService,
+                          Invoker invoker, OnedriveSetUpService onedriveSetUpService) {
         this.managementDao = managementDao;
         this.eventHandler = eventHandler;
         this.requestContext = requestContext;
         this.authorizationContext = authorizationContext;
+        this.auditService = auditService;
+        this.onedriveSetUpService = onedriveSetUpService;
+        this.invokerId = invoker.getInvokerId();
     }
 
     @CatalogRequest(
@@ -76,7 +89,7 @@ public class ManagementArea {
             area = "Management",
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result'")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the copy operation was successful'")})
     public ExtensionResponse copy(
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the source file or folder to be copied'")}) String source,
@@ -90,17 +103,58 @@ public class ManagementArea {
             ) Boolean allowRetry) {
         LOGGER.info("Copy file operation initiated - Source: {}, Target: {}, Replace: {}, Create Folder: {}, Allow Retry: {}",
                 source, target, replace, createFolder, allowRetry);
-
+        auditService.startRequest(invokerId, "Copy");
         try {
             LOGGER.debug("Delegating copy file operation to managementDao");
             ExtensionResponse response = managementDao.copyFile(source, target, replace, createFolder, allowRetry);
-            LOGGER.info("Copy file operation completed - Success: {}",
-                    response.getResponseValue() != null && response.getResponseValue() != null &&
-                            response.getResponseValue().containsKey("Success") ?
-                            ((Map<?, ?>) response.getResponseValue()).get("Success") : "unknown");
+            LOGGER.info("Copy file operation completed");
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Copy", null, null, null);
             return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Copy",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
         } catch (Exception e) {
             LOGGER.error("Copy file operation failed with exception", e);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Copy",
+                    e.getMessage(), e.getClass().getSimpleName(), null);
+            return new ExtensionResponseBuilder()
+                    .success(Map.of("Success", false, "Message", "Failed to copy file: " + e.getMessage()), null, null)
+                    .build();
+        }
+    }
+
+    @CatalogRequest(
+            id = "localDomainRequest_0f7c0ee1-2127-4a5d-bb33-fdb98b055012",
+            name = "Copy With Name",
+            description = "Atomically copies a file into the target folder with a specified name, avoiding renames and preventing collisions during parallel execution.",
+            area = "Management",
+            type = CatalogRequest.Type.CHANGE_SYSTEM)
+    @Field.Desc(name = "File", type = "Entity(File)",required = false)
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L")}, options = {})
+    @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S")}, options = {})
+    public ExtensionResponse copyWithName(
+            @Field.Text(name = "Source", required = true, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the source file to be copied'")}, options = {}) String source,
+            @Field.Text(name = "Target", required = true, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the target folder'")}, options = {}) String target,
+            @Field.Text(name = "Target File Name", required = true, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Name for the copied file (e.g., 2026-04-16_ACN-SLOB-Worksheet.xlsx'")}, options = {}) String targetFileName,
+            @Field.Boolean(name = "Replace", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'If true, replaces any existing file at the target location'")}, options = {}) Boolean replace,
+            @Field.Boolean(name = "Create Folder", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'If true, creates any new folders in the target path'")}, options = {}) Boolean createFolder) {
+        LOGGER.info("Copy With Name operation initiated - Source: {}, Target: {}, Target File Name: {}, Replace: {}, Create Folder: {}",
+                source, target, targetFileName, replace, createFolder);
+        auditService.startRequest(invokerId, "Copy With Name");
+        try {
+            ExtensionResponse response = managementDao.copyFile(source, target, replace, createFolder, false, targetFileName);
+            LOGGER.info("Copy With Name operation completed successfully");
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Copy With Name", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Copy With Name",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception e) {
+            LOGGER.error("Copy With Name operation failed with exception", e);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Copy With Name",
+                    e.getMessage(), e.getClass().getSimpleName(), null);
             return new ExtensionResponseBuilder()
                     .success(Map.of("Success", false, "Message", "Failed to copy file: " + e.getMessage()), null, null)
                     .build();
@@ -114,7 +168,7 @@ public class ManagementArea {
             area = "Management",
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the deletion was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result'")})
     public ExtensionResponse delete(
             @Field.Text(name = "Target", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the file to be deleted (e.g., /Documents/file.txt or /Folders/MyFolder). For shared drives, use format driveId:/path/to/file'")}) String target,
             @Field.Boolean(name = Constants.ENABLE_ERROR_HANDLING, required = false,
@@ -123,16 +177,20 @@ public class ManagementArea {
                     }
             ) Boolean allowRetry) {
         LOGGER.info("Delete file operation initiated - Target: {}, Allow Retry: {}", target, allowRetry);
+        auditService.startRequest(invokerId, "Delete");
         try {
             ExtensionResponse response = managementDao.deleteFile(target, allowRetry);
-            LOGGER.info("Delete file operation completed - Success: {}, Message: {}",
-                    response.getResponseValue() != null && response.getResponseValue().containsKey("Success") ?
-                            ((Map<?, ?>) response.getResponseValue()).get("Success") : "unknown",
-                    response.getResponseValue() != null && response.getResponseValue().containsKey("Message") ?
-                            ((Map<?, ?>) response.getResponseValue()).get("Message") : "");
+            LOGGER.info("Delete file operation completed");
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Delete", null, null, null);
             return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Delete",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
         } catch (Exception cause) {
             LOGGER.error("Delete file operation failed with exception", cause);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Delete",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
             return new ExtensionResponseBuilder()
                     .success(Map.of("Success", false, "Message", "Failed to delete file: " + Constants.PLEASE_PROVIDE_VALID_TARGET_PATH), null, null)
                     .build();
@@ -149,18 +207,22 @@ public class ManagementArea {
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the download operation was successful'")})
     @Field(name = "Message", type = "RichText", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse downloadAsFile(
-            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the file in the cloud storage that should be downloaded (e.g., /Documents/file.pdf or /Sites/TeamSite/Shared Documents/report.xlsx). For shared drives, use format driveId:/path/to/file'")}) String source) {
+            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Full path to the file in the cloud storage that should be downloaded (e.g., /Documents/file.pdf or /Sites/TeamSite/Shared Documents/report.xlsx). For shared drives, use format driveId:/path/to/file'")}) String source) {
         LOGGER.info("Download as file operation initiated - Source: {}", source);
+        auditService.startRequest(invokerId, "Download as File");
         try {
             ExtensionResponse response = managementDao.downloadFileAsFile(source);
-            LOGGER.info("Download as file operation completed - Success: {}, Message: {}",
-                    response.getResponseValue() != null && response.getResponseValue().containsKey("Success") ?
-                            ((Map<?, ?>) response.getResponseValue()).get("Success") : "unknown",
-                    response.getResponseValue() != null && response.getResponseValue().containsKey("Message") ?
-                            ((Map<?, ?>) response.getResponseValue()).get("Message") : "");
+            LOGGER.info("Download as file operation completed");
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Download as File", null, null, null);
             return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Download as File",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
         } catch (Exception e) {
             LOGGER.error("Download as file operation failed with exception", e);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Download as File",
+                    e.getMessage(), e.getClass().getSimpleName(), null);
             return new ExtensionResponseBuilder()
                     .success(Map.of("Success", false, "Message", "Failed to download file: " + e.getMessage()), null, null)
                     .build();
@@ -174,11 +236,24 @@ public class ManagementArea {
             area = "Management",
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the link generation was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     @Field(name = "Link", type = "RichText", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'The generated hyperlink to access the file directly in OneDrive'")})
     public ExtensionResponse downloadAsLink(
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the file in the cloud storage (e.g., /Documents/file.pdf or /Sites/TeamSite/Shared Documents/report.xlsx). For shared drives, use format driveId:/path/to/file'")}) String source) {
-        return managementDao.downloadFileAsLink(source);
+        auditService.startRequest(invokerId, "Download as Link");
+        try {
+            ExtensionResponse response = managementDao.downloadFileAsLink(source);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Download as Link", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Download as Link",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Download as Link",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -189,9 +264,9 @@ public class ManagementArea {
             type = CatalogRequest.Type.QUERY_SYSTEM)
     @Field.Text(name = "Task ID", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Unique identifier for tracking this asynchronous operation. Use this ID with the Get Info Result operation to retrieve the complete folder statistics.'")})
     public String getInfo(
-            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the folder in the cloud storage to analyze (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder'")}) String sourcePath) {
+            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Full path to the folder in the cloud storage to analyze (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder'")}) String sourcePath) {
         LOGGER.info("Get Info operation initiated - Source Path: {}", sourcePath);
-
+        ensureUserAuthorized(); // Pre-check: verify user token synchronously before async submit (Jira pattern)
         final String taskId = UUID.randomUUID().toString();
         boolean useEmail = !requestContext.invokeAsUser();
         String accountID = authorizationContext.getAuthorizedAccount().getAccountId();
@@ -200,11 +275,21 @@ public class ManagementArea {
         executorService.submit(() -> {
             try {
                 ThreadLocalProxy.setAll(threadLocals);
+                auditService.startRequest(invokerId, "Get Info");
                 FreeForm freeForm = managementDao.getInfo(sourcePath, useEmail, accountID);
-                Thread.sleep(2000); // Adding 2 seconds delay to initialize wait for event in case of quick response
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Get Info", null, null, null);
+                Thread.sleep(10000); // Adding 10 seconds delay to initialize wait for event in case of quick response
                 eventHandler.handleEvent(taskId, freeForm);
             } catch (InterruptedException cause) {
                 Thread.currentThread().interrupt();
+            } catch (MustAuthorizeException cause) {
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Get Info",
+                        cause.getMessage(), cause.getClass().getSimpleName(), null);
+            } catch (Exception cause) {
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Get Info",
+                        cause.getMessage(), cause.getClass().getSimpleName(), null);
+            } finally {
+                ThreadLocalProxy.removeAll();
             }
         });
         return taskId;
@@ -226,17 +311,20 @@ public class ManagementArea {
     @Field.Date(name = "Oldest File Create Date", showHowManyDaysInViewer = 60, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Creation timestamp of the oldest file in the folder'")})
     @Field.Date(name = "Newest File Date", showHowManyDaysInViewer = 60, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Creation timestamp of the newest file in the folder'")})
     @Field.Date(name = "Last Modified File Create Date", showHowManyDaysInViewer = 60, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Last modification timestamp of the most recently modified file in the folder'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the folder information retrieval was successful'")})
     public Map<String, Object> getInfoResult(
             @Field(name = "eventName", type = "Text") String eventName,
             @Field(name = "eventData", type = "FreeForm") FreeForm eventData,
             @Field.Text(name = "Task ID", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The task identifier returned by operations like List Files or List Folders, used to retrieve the results of the asynchronous operation'")}) String taskID) {
+        auditService.startRequest(invokerId, "Get Info Result");
         Map<String, Object> payload = new HashMap<>();
         if (eventName.equals(taskID)) {
             ResponseUtil.getFileEventData(eventData, payload);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Get Info Result", null, null, null);
             return payload;
         }
+        auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Get Info Result", null, null, null);
         return Map.of(Constants.MESSAGE, eventData.get(Constants.MESSAGE), Constants.SUCCESS, eventData.get(Constants.SUCCESS));
     }
 
@@ -250,18 +338,21 @@ public class ManagementArea {
     @Field.Boolean(name = "Success", required = false, attributes = {
             @Attribute(name = "visualWidth", value = "S"),
             @Attribute(name = "toolTip", value = "'Indicates whether the file retrieval operation was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public Map<String, Object> getResult(
             @Field(name = "eventName", type = "Text") String eventName,
             @Field(name = "eventData", type = "FreeForm") FreeForm eventData,
             @Field.Text(name = "Task ID", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The task identifier returned by operations like List Files or List Folders, used to retrieve the results of the asynchronous operation'")}) String taskID) {
+        auditService.startRequest(invokerId, "Get Result");
         if (eventName.equals(taskID)) {
             Map<String, Object> map = new HashMap<>();
             map.put(Constants.FILES, eventData.get(Constants.FILES));
             map.put(Constants.MESSAGE, eventData.get(Constants.MESSAGE));
             map.put(Constants.SUCCESS, eventData.get(Constants.SUCCESS));
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Get Result", null, null, null);
             return map;
         }
+        auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Get Result", "Invalid Input", null, null);
         throw new IllegalStateException("Invalid Input");
     }
 
@@ -275,10 +366,10 @@ public class ManagementArea {
             @Attribute(name = "visualWidth", value = "S"),
             @Attribute(name = "toolTip", value = "'Unique identifier for tracking this asynchronous operation. Use this ID with the Get Result operation to retrieve the file list.'")})
     public String listFiles(
-            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the folder in the cloud storage to list files from (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder'")}) String sourcePath,
+            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Full path to the folder in the cloud storage to list files from (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder'")}) String sourcePath,
             @Field.Text(name = "Search", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Optional search pattern to filter files by name (supports wildcards and regular expressions)'")}) String search) {
         LOGGER.info("List Files operation initiated - Source Path: {}, Search: {}", sourcePath, search);
-
+        ensureUserAuthorized(); // Pre-check: verify user token synchronously before async submit (Jira pattern)
         final String taskId = UUID.randomUUID().toString();
         boolean useEmail = !requestContext.invokeAsUser();
         String accountID = authorizationContext.getAuthorizedAccount().getAccountId();
@@ -287,13 +378,22 @@ public class ManagementArea {
         executorService.submit(() -> {
             try {
                 ThreadLocalProxy.setAll(threadLocals);
+                auditService.startRequest(invokerId, "List Files");
                 FreeForm freeForm = managementDao.getFileByPath(sourcePath, FileUtil.validateTextInput(search), useEmail, accountID);
-                Thread.sleep(2000); // Adding 2 seconds delay to initialize wait for event in case of quick response
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "List Files", null, null, null);
+                Thread.sleep(10000); // Adding 10 seconds delay to initialize wait for event in case of quick response
                 eventHandler.handleEvent(taskId, freeForm);
             } catch (InterruptedException cause) {
                 Thread.currentThread().interrupt();
+            } catch (MustAuthorizeException cause) {
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "List Files",
+                        cause.getMessage(), cause.getClass().getSimpleName(), null);
+            } catch (Exception cause) {
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "List Files",
+                        cause.getMessage(), cause.getClass().getSimpleName(), null);
+            } finally {
+                ThreadLocalProxy.removeAll();
             }
-
         });
         return taskId;
     }
@@ -306,10 +406,10 @@ public class ManagementArea {
             type = CatalogRequest.Type.QUERY_SYSTEM)
     @Field.Text(name = "Task ID", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Unique identifier for tracking this asynchronous operation. Use this ID with the Get Result operation to retrieve the file list.'")})
     public String listFolders(
-            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the folder in the cloud storage to list files from (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder'")}) String sourcePath,
+            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Full path to the folder in the cloud storage to list files from (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder'")}) String sourcePath,
             @Field.Text(name = "Search", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Optional search pattern to filter files by name (supports wildcards and regular expressions)'")}) String search) {
         LOGGER.info("List Folders operation initiated - Source Path: {}, Search: {}", sourcePath, search);
-
+        ensureUserAuthorized(); // Pre-check: verify user token synchronously before async submit (Jira pattern)
         final String taskId = UUID.randomUUID().toString();
         boolean useEmail = !requestContext.invokeAsUser();
         String accountID = authorizationContext.getAuthorizedAccount().getAccountId();
@@ -318,14 +418,22 @@ public class ManagementArea {
         executorService.submit(() -> {
             try {
                 ThreadLocalProxy.setAll(threadLocals);
+                auditService.startRequest(invokerId, "List Folders");
                 FreeForm freeForm = managementDao.getFoldersByPath(sourcePath, FileUtil.validateTextInput(search), useEmail, accountID);
-
-                Thread.sleep(2000); // Adding 2 seconds delay to initialize wait for event in case of quick response
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "List Folders", null, null, null);
+                Thread.sleep(10000); // Adding 10 seconds delay to initialize wait for event in case of quick response
                 eventHandler.handleEvent(taskId, freeForm);
             } catch (InterruptedException cause) {
                 Thread.currentThread().interrupt();
+            } catch (MustAuthorizeException cause) {
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "List Folders",
+                        cause.getMessage(), cause.getClass().getSimpleName(), null);
             } catch (Exception cause) {
                 LOGGER.error("Error occurred while listing folders", cause);
+                auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "List Folders",
+                        cause.getMessage(), cause.getClass().getSimpleName(), null);
+            } finally {
+                ThreadLocalProxy.removeAll();
             }
         });
         return taskId;
@@ -340,7 +448,7 @@ public class ManagementArea {
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the move operation was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse move(
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the source file or folder to be moved (e.g., /Documents/file.txt or /Folders/MyFolder). For shared drives, use format driveId:/path/to/file'")}) String source,
             @Field.Text(name = "Target", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path where the file or folder should be moved to (e.g., /Documents/NewLocation or /Folders/Archive). For shared drives, use format driveId:/path/to/destination'")}) String target,
@@ -349,7 +457,20 @@ public class ManagementArea {
                             @Attribute(name = "toolTip", value = "'Enable to allow re-entry of values if validation fails'")
                     }
             ) Boolean allowRetry) {
-        return managementDao.moveFile(source, target, allowRetry);
+        auditService.startRequest(invokerId, "Move");
+        try {
+            ExtensionResponse response = managementDao.moveFile(source, target, allowRetry);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Move", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Move",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Move",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -357,13 +478,28 @@ public class ManagementArea {
             name = "Read",
             description = "Read the content of the file as plain text.",
             area = "Management",
-            type = CatalogRequest.Type.CHANGE_SYSTEM)
+            type = CatalogRequest.Type.CHANGE_SYSTEM,
+            tool = true)
     @Field(name = "Content", type = "Paragraph", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'The text content of the file'")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the read operation was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse read(
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the text file to be read (e.g., /Documents/notes.txt or /Folders/MyFolder/config.json). For shared drives, use format driveId:/path/to/file'")}) String source) {
-        return managementDao.readTxtFile(source);
+        auditService.startRequest(invokerId, "Read");
+        try {
+            ensureUserAuthorized();
+            ExtensionResponse response = managementDao.readTxtFile(source);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Read", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Read",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Read",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -371,13 +507,28 @@ public class ManagementArea {
             name = "Rename",
             description = "Renames the file given at the Source File Path to the name Given.",
             area = "Management",
-            type = CatalogRequest.Type.CHANGE_SYSTEM)
+            type = CatalogRequest.Type.CHANGE_SYSTEM,
+            tool = true)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the rename operation was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse rename(
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the file or folder to be renamed (e.g., /Documents/old_name.txt or /Folders/OldFolder). For shared drives, use format driveId:/path/to/file'")}) String source,
             @Field.Text(name = "Target File Name", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'New name for the file or folder (without the path, e.g., new_name.txt or NewFolder)'")}) String targetFileName) {
-        return managementDao.renameFile(source, targetFileName);
+        auditService.startRequest(invokerId, "Rename");
+        try {
+            ensureUserAuthorized();
+            ExtensionResponse response = managementDao.renameFile(source, targetFileName);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Rename", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Rename",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Rename",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -387,12 +538,25 @@ public class ManagementArea {
             area = "Management",
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the sharing operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the sharing operation result or any errors encountered'")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the file sharing operation was successful'")})
     public ExtensionResponse shareFile(
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the file to be shared (e.g., /Documents/file.txt). For shared drives, use format driveId:/path/to/file'")}) String source,
             @Field.Desc(name = "Share", type = "[ { User: Email, Permissions: PickOne(Read|Write|Read and Write|Own) } ]") List<Map<String, Object>> share) {
-        return managementDao.shareFile(source, share);
+        auditService.startRequest(invokerId, "Share File");
+        try {
+            ExtensionResponse response = managementDao.shareFile(source, share);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Share File", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Share File",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Share File",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -403,7 +567,7 @@ public class ManagementArea {
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the file upload was successful'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the upload operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the upload operation result or any errors encountered'")})
     public ExtensionResponse write(
             @Field.File(name = "Krista File", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The file to be uploaded to OneDrive. Supports files up to 50 MB in size'")}) app.krista.model.base.File kristaFile,
             @Field.Text(name = "Target Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path where the file should be uploaded (e.g., /Documents/file.pdf). For shared drives, use format driveId:/path/to/file'")}) String targetPath,
@@ -412,7 +576,20 @@ public class ManagementArea {
                             @Attribute(name = "toolTip", value = "'Enable to allow re-entry of values if validation fails'")
                     }
             ) Boolean allowRetry) {
-        return managementDao.uploadFile(kristaFile, targetPath, allowRetry);
+        auditService.startRequest(invokerId, "Write");
+        try {
+            ExtensionResponse response = managementDao.uploadFile(kristaFile, targetPath, allowRetry);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Write", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Write",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Write",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -420,10 +597,11 @@ public class ManagementArea {
             name = "Write Text",
             description = "Uploads the file content to the cloud storage at the given target location as a plain text file.",
             area = "Management",
-            type = CatalogRequest.Type.CHANGE_SYSTEM)
+            type = CatalogRequest.Type.CHANGE_SYSTEM,
+            tool = true)
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the text file was successfully created'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse writeText(
             @Field(name = "File Content", type = "Paragraph", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The text content to be written to the file.'")}) String fileContent,
             @Field.Text(name = "Target", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path where the text file should be created (e.g., /Documents/notes.txt). For shared drives, use format driveId:/path/to/file'")}) String target,
@@ -432,7 +610,38 @@ public class ManagementArea {
                             @Attribute(name = "toolTip", value = "'Enable to allow re-entry of values if validation fails'")
                     }
             ) Boolean allowRetry) {
-        return managementDao.uploadFileAsTxt(fileContent, target, allowRetry);
+        auditService.startRequest(invokerId, "Write Text");
+        try {
+            ensureUserAuthorized();
+            ExtensionResponse response = managementDao.uploadFileAsTxt(fileContent, target, allowRetry);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Write Text", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Write Text",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Write Text",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
+    }
+
+    private void ensureUserAuthorized() {
+        if (!authenticateAsUser()) {
+            return;
+        }
+        try {
+            onedriveSetUpService.verifyUserAuthorization();
+        } catch (MustAuthorizeException cause) {
+            throw cause;
+        } catch (IOException cause) {
+            throw new IllegalStateException("Failed to verify OneDrive user authorization", cause);
+        }
+    }
+
+    private boolean authenticateAsUser() {
+        return requestContext != null && requestContext.invokeAsUser();
     }
 
     @CatalogRequest(
@@ -443,13 +652,25 @@ public class ManagementArea {
             type = CatalogRequest.Type.CHANGE_SYSTEM)
     @Field.Desc(name = "Result", type = "[ { Path: Text, Date: Date, Update: PickOne(Created|Updated|Deleted) } ]", required = false)
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the change history was successfully retrieved'")})
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     public ExtensionResponse changesSince(
-            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Full path to the folder or location in the cloud storage that you want to monitor for changes (e.g., /Documents or /Sites/TeamSite/Shared Documents)'")}) String sourcePath,
+            @Field.Text(name = "Source Path", attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Full path to the folder or location in the cloud storage that you want to monitor for changes (e.g., /Documents or /Sites/TeamSite/Shared Documents)'")}) String sourcePath,
             @Field.Text(name = "Search", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Optional regular expression pattern to filter the subfolder names (e.g., Project.* to only show folders starting with \"Project\")'")}) String search,
             @Field.Date(name = "Since", required = true, showHowManyDaysInViewer = 60, allowToday = false, allowFuture = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The starting date and time from which to retrieve changes. Only changes that occurred after this timestamp will be included.'")}) Long since) {
-        return managementDao.getChangesSince(sourcePath, FileUtil.validateTextInput(search), since);
-
+        auditService.startRequest(invokerId, "Changes Since");
+        try {
+            ExtensionResponse response = managementDao.getChangesSince(sourcePath, FileUtil.validateTextInput(search), since);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Changes Since", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Changes Since",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Changes Since",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        }
     }
 
     @CatalogRequest(
@@ -466,15 +687,51 @@ public class ManagementArea {
             @Field.Text(name = "Source", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Path to monitor for changes. Can be a specific file path or a folder path to monitor all files within that folder.)'")}) String source,
             @Field.PickOne(name = "Event", values = {"Created", "Updated", "Deleted", "Shared"}, required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Optional filter to only trigger on specific types of changes. If not specified, all change types will trigger this event.'")}) String event,
             @Field.Text(name = "Search", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Optional regular expression pattern to filter the subfolder names (e.g., Project.* to only show folders starting with \"Project\")'")}) String search) {
+        auditService.startRequest(invokerId, "When a File is Changed");
         if (eventName.equalsIgnoreCase(Constants.FILE_RECEIVED)
                 && eventData.get(Constants.EVENT) != null && !eventData.get(Constants.EVENT).equals(Constants.NO_CHANGE)
                 && isValidInfo(eventData, search, source, event)) {
             Map<String, Object> map = new HashMap<>();
             map.put(Constants.FILE, eventData.get(Constants.FILE));
             map.put(Constants.EVENT, eventData.get(Constants.EVENT));
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "When a File is Changed", null, null, null);
             return map;
         }
+        auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "When a File is Changed", "Invalid Input", null, null);
         throw new IllegalStateException("Invalid Input");
+    }
+
+    @CatalogRequest(
+            id = "localDomainRequest_a2f94c61-3e17-4b08-bc90-5d7f1e2a0c83",
+            name = "Get Drives",
+            description = "Returns a list of drives accessible to the authenticated user, including their pre-formatted source paths. Use the returned Drive Path values directly as the Source Path in List Files, List Folders, or any other operation to access shared folders and SharePoint document libraries.",
+            area = "Management",
+            type = CatalogRequest.Type.QUERY_SYSTEM)
+    @Field.Desc(name = "Drives", type = "[ { Drive Path: Text, Drive Name: Text, Drive Type: Text, Owner: Text } ]", required = false)
+    @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the drives were successfully retrieved'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    public ExtensionResponse getDrives(
+            @Field.Text(name = "Search", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Optional text to filter drives by name. Leave blank to return all accessible drives.'")}) String search) {
+        LOGGER.info("Get Drives operation initiated - Search: {}", search);
+        auditService.startRequest(invokerId, "Get Drives");
+        try {
+            boolean useEmail = !requestContext.invokeAsUser();
+            String accountID = authorizationContext.getAuthorizedAccount().getAccountId();
+            ExtensionResponse response = managementDao.getDrives(FileUtil.validateTextInput(search), useEmail, accountID);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Get Drives", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Get Drives",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            LOGGER.error("Get Drives operation failed with exception", cause);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Get Drives",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            return new ExtensionResponseBuilder()
+                    .success(Map.of("Success", false, "Message", "Failed to retrieve drives: " + cause.getMessage()), null, null)
+                    .build();
+        }
     }
 
     @CatalogRequest(
@@ -483,13 +740,35 @@ public class ManagementArea {
             description = "Accept folder name and path as input and create folder at given path.",
             area = "Management",
             type = CatalogRequest.Type.CHANGE_SYSTEM)
-    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
+    @Field.Text(name = "Message", required = false, attributes = {@Attribute(name = "visualWidth", value = "L"), @Attribute(name = "toolTip", value = "'Provides details about the operation result or any errors encountered'")})
     @Field.Boolean(name = "Success", required = false, attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'Indicates whether the folder was successfully created'")})
     @Field.Desc(name = "File", type = "Entity(File)", required = false)
     public ExtensionResponse createFolder(
             @Field.Text(name = "Folder Name", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The name for the new folder. This should not include path separators .'")}) String folderName,
-            @Field.Text(name = "Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The full path where the new folder should be created. The parent folder must already exist.'")}) String path) {
-        return managementDao.createFolder(folderName, path);
+            @Field.Text(name = "Path", attributes = {@Attribute(name = "visualWidth", value = "S"), @Attribute(name = "toolTip", value = "'The full path where the new folder should be created. The parent folder must already exist.'")}) String path,
+            @Field.Boolean(name = Constants.ENABLE_ERROR_HANDLING, required = false,
+                    attributes = {
+                            @Attribute(name = "toolTip", value = "'Enable to allow re-entry of values if validation fails'")
+                    }
+            ) Boolean allowRetry) {
+        LOGGER.info("Create Folder operation initiated - Folder Name: {}, Path: {}, Allow Retry: {}", folderName, path, allowRetry);
+        auditService.startRequest(invokerId, "Create Folder");
+        try {
+            ExtensionResponse response = managementDao.createFolder(folderName, path, allowRetry);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_SUCCESS, "success", "Create Folder", null, null, null);
+            return response;
+        } catch (MustAuthorizeException cause) {
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Create Folder",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            throw cause;
+        } catch (Exception cause) {
+            LOGGER.error("Create Folder operation failed with exception", cause);
+            auditService.record(invokerId, AuditEventType.CATALOG_REQUEST_FAILURE, "failure", "Create Folder",
+                    cause.getMessage(), cause.getClass().getSimpleName(), null);
+            return new ExtensionResponseBuilder()
+                    .success(Map.of("Success", false, "Message", "Failed to create folder: " + cause.getMessage()), null, null)
+                    .build();
+        }
     }
 
 
@@ -505,7 +784,9 @@ public class ManagementArea {
     }
 
     private boolean isContainsSource(app.krista.extensions.essentials.cloudfiles.onedrive.catalog.entities.File fileEntity, String source) {
-        return source != null && fileEntity.absolutePath != null && FileUtil.isPathContainsInput(fileEntity.absolutePath, source);
+        boolean matches = source != null && fileEntity.absolutePath != null && FileUtil.isPathContainsInput(fileEntity.absolutePath, source);
+        LOGGER.info("isContainsSource: absolutePath='{}', source='{}', matches={}", fileEntity.absolutePath, source, matches);
+        return matches;
     }
 
     private boolean isContainsSearch(app.krista.extensions.essentials.cloudfiles.onedrive.catalog.entities.File eventData, String search) {

@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -56,9 +56,10 @@ public class OperationsManagementDao {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OperationsManagementDao.class);
     private static final String FILE_SIZE_IS_TOO_LARGE_TO_READ = "File size is too large to read";
-    private static final String INVALID_FILE_NAME_PLEASE_PROVIDE_FILE_EXTENSION_AS_TXT = "Invalid file name, please provide file extension as .txt";
+    private static final String INVALID_FILE_NAME_PLEASE_PROVIDE_FILE_EXTENSION_AS_TXT = "Invalid file name, please provide a .txt or .md file extension";
     private static final String MICROSOFT_GRAPH_DOWNLOAD_URL = "@microsoft.graph.downloadUrl";
 
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final KristaMediaClient kristaMediaClient;
     private final ValidationTypeUtil validationTypeUtil;
@@ -67,14 +68,23 @@ public class OperationsManagementDao {
 
     @Inject
     public OperationsManagementDao(GraphServiceClientProviderFactory factory, KristaMediaClient kristaMediaClient, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
-        this(factory.create(), kristaMediaClient, validationTypeUtil, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.kristaMediaClient = kristaMediaClient;
+        this.validationTypeUtil = validationTypeUtil;
+        this.telemetryHelper = telemetryHelper;
     }
 
     public OperationsManagementDao(GraphServiceClientProvider provider, KristaMediaClient kristaMediaClient, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.kristaMediaClient = kristaMediaClient;
         this.validationTypeUtil = validationTypeUtil;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     /**
@@ -86,10 +96,13 @@ public class OperationsManagementDao {
      */
     @NotNull
     private static String getErrorMessage(Exception cause) {
-        if (Objects.requireNonNull(cause.getMessage()).contains(Constants.ITEM_NOT_FOUND)) {
+        String message = cause.getMessage();
+        if (message == null) {
+            return Constants.PLEASE_PROVIDE_VALID_FILE_SOURCE_PATH;
+        }
+        if (message.contains(Constants.ITEM_NOT_FOUND)) {
             return Constants.FILE_NOT_FOUND;
-
-        } else if (Objects.requireNonNull(cause.getMessage()).contains(Constants.ACCESS_DENIED)) {
+        } else if (message.contains(Constants.ACCESS_DENIED)) {
             return Constants.FILE_IS_CURRENTLY_RESTRICTED_FOR_ASSISTANCE_CONTACT_YOUR_ADMINISTRATOR_OR_SUPPORT;
         } else {
             return Constants.PLEASE_PROVIDE_VALID_FILE_SOURCE_PATH;
@@ -98,12 +111,14 @@ public class OperationsManagementDao {
 
     @Nullable
     private static String getDownloadURL(DriveItem driveItem) {
-
         String downloadLink = driveItem.additionalDataManager().get(MICROSOFT_GRAPH_DOWNLOAD_URL) != null
                 ? driveItem.additionalDataManager().get(MICROSOFT_GRAPH_DOWNLOAD_URL).getAsString()
                 : driveItem.webUrl;
+        String parentPath = (driveItem.parentReference != null && driveItem.parentReference.path != null)
+                ? FileUtil.getRelativeFilePath(driveItem.parentReference.path)
+                : "";
         return "<a href=" + downloadLink + " target=_blank>"
-                + FileUtil.getRelativeFilePath(driveItem.parentReference.path)
+                + parentPath
                 + "/" + driveItem.name + "</a>";
     }
 
@@ -258,24 +273,48 @@ public class OperationsManagementDao {
                     if (driveItem.size != null && driveItem.size > (1024 * 1024 * 50)) { // 50MB
                         ResponseUtil.errorResponse(false, Constants.FILE_SIZE_IS_GREATER_THAN_50_MB_PLEASE_DOWNLOAD_FILE_BY_URL
                                 + " \n Use link to download file : " + "[ " + downloadURL + " ]", payload);
-
-                    } else if (driveItem.size != null && driveItem.size < (1024 * 1024 * 50)
+                    } else if (driveItem.size != null && driveItem.size <= (1024 * 1024 * 50)
                             && driveItem.parentReference != null
                             && driveItem.parentReference.driveId != null) {
                         assert driveItem.id != null;
-                        InputStream inputStream = FileUtil.getUserRequestBuilderWithItemId(provider, driveItem.parentReference.driveId, driveItem.id)
-                                .content().buildRequest().get();
-
+                        String rawDownloadUrl = driveItem.additionalDataManager().get(MICROSOFT_GRAPH_DOWNLOAD_URL) != null
+                                ? driveItem.additionalDataManager().get(MICROSOFT_GRAPH_DOWNLOAD_URL).getAsString()
+                                : null;
+                        InputStream inputStream;
+                        if (rawDownloadUrl != null) {
+                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(rawDownloadUrl).openConnection();
+                            conn.setConnectTimeout(30000);
+                            conn.setReadTimeout(60000);
+                            conn.setInstanceFollowRedirects(true);
+                            int responseCode = conn.getResponseCode();
+                            if (responseCode >= 200 && responseCode < 300) {
+                                inputStream = conn.getInputStream();
+                            } else {
+                                throw new IOException("Failed to download file content: HTTP " + responseCode + " for file: " + driveItem.name);
+                            }
+                        } else {
+                            inputStream = FileUtil.getUserRequestBuilderWithItemId(createProvider(), driveItem.parentReference.driveId, driveItem.id)
+                                    .content().buildRequest().get();
+                        }
                         java.io.File content = DriveUtil.getFileFromInputStream(inputStream, driveItem.name);
                         app.krista.model.base.File kristaFile = kristaMediaClient.toKristaFile(content);
                         ResponseUtil.downloadAsKristaFileResponse(kristaFile, true, "File is ready to download", payload);
+                    } else {
+                        LOGGER.warn("downloadByDriveIDByPath - cannot download file: size={}, parentReference={}, driveId={}",
+                                driveItem.size,
+                                driveItem.parentReference != null ? "present" : "NULL",
+                                (driveItem.parentReference != null) ? driveItem.parentReference.driveId : "NULL");
+                        ResponseUtil.errorResponse(false, Constants.PLEASE_PROVIDE_VALID_FILE_SOURCE_PATH, payload);
                     }
                 }
             } else {
                 ResponseUtil.errorResponse(false, Constants.PLEASE_PROVIDE_VALID_FILE_SOURCE_PATH, payload);
             }
         } catch (GraphServiceException | IllegalArgumentException | IOException cause) {
-            LOGGER.info(cause.getMessage(), cause);
+            LOGGER.error("Error during download by drive ID path: {}", cause.getMessage(), cause);
+            ResponseUtil.errorResponse(false, getErrorMessage(cause), payload);
+        } catch (Exception cause) {
+            LOGGER.error("Unexpected error during download by drive ID path: {}", cause.getMessage(), cause);
             ResponseUtil.errorResponse(false, getErrorMessage(cause), payload);
         }
     }
@@ -288,7 +327,7 @@ public class OperationsManagementDao {
      * @return The DriveItem, or null if not found
      */
     @Nullable
-    private DriveItem getDriveItem(String driveID, String path) {
+    DriveItem getDriveItem(String driveID, String path) {
         return (driveID != null)
                 ? getSharedDriveItem(driveID, path)
                 : getRootDriveItem(path);
@@ -304,7 +343,7 @@ public class OperationsManagementDao {
     @Nullable
     private DriveItem getSharedDriveItem(String driveID, String path) {
         return (path != null && !path.isEmpty())
-                ? FileUtil.getSharedUserRequestBuilder(provider, driveID).itemWithPath(path).buildRequest().get()
+                ? FileUtil.getSharedUserRequestBuilder(createProvider(), driveID).itemWithPath(path).buildRequest().get()
                 : null;
     }
 
@@ -317,7 +356,7 @@ public class OperationsManagementDao {
     @Nullable
     private DriveItem getRootDriveItem(String path) {
         return (path != null && !path.isEmpty())
-                ? FileUtil.getRootUserRequestBuilder(provider).itemWithPath(path).buildRequest().get()
+                ? FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(path).buildRequest().get()
                 : null;
     }
 
@@ -657,10 +696,10 @@ public class OperationsManagementDao {
     @Nullable
     private DriveItem getUploadedDriveItem(String driveID, DriveItem driveItem, File javaFile) throws IOException {
         return driveID != null
-                ? FileUtil.getUserRequestBuilderWithItemId(provider, driveID, driveItem.id)
+                ? FileUtil.getUserRequestBuilderWithItemId(createProvider(), driveID, driveItem.id)
                 .itemWithPath(javaFile.getName())
                 .content().buildRequest().put(DriveUtil.getByteArray(javaFile))
-                : FileUtil.getUserRequestBuilderWithItemId(provider, null, driveItem.id)
+                : FileUtil.getUserRequestBuilderWithItemId(createProvider(), null, driveItem.id)
                 .itemWithPath(javaFile.getName())
                 .content().buildRequest().put(DriveUtil.getByteArray(javaFile));
     }
@@ -738,7 +777,7 @@ public class OperationsManagementDao {
                 }
 
                 String path = FileUtil.getRelativeFilePath(target);
-                FileUtil.getRootUserRequestBuilder(provider).itemWithPath(path).buildRequest().delete();
+                FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(path).buildRequest().delete();
 
                 LOGGER.info("File deleted successfully at path: {}", path);
                 String successMessage = driveItem.folder != null ?
@@ -834,15 +873,15 @@ public class OperationsManagementDao {
                 if (FileUtil.isPersonalDrive(target)) {
                     String path = FileUtil.getRelativeFilePath(target);
                     driveItem = !path.isEmpty()
-                            ? FileUtil.getRootUserRequestBuilder(provider).itemWithPath(path).buildRequest().get()
-                            : FileUtil.getRootUserRequestBuilder(provider).buildRequest().get();
+                            ? FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(path).buildRequest().get()
+                            : FileUtil.getRootUserRequestBuilder(createProvider()).buildRequest().get();
                     if (driveItem != null) {
                         ResponseUtil.addDriveItem(true, driveItem, payload);
                     }
                 }
                 if (FileUtil.checkDriveIDContains(target)) {
                     List<String> content = FileUtil.getDriveIDAndPath(target);
-                    driveItem = FileUtil.getSharedUserRequestBuilder(provider, content.get(0)).itemWithPath(content.get(1)).buildRequest().get();
+                    driveItem = FileUtil.getSharedUserRequestBuilder(createProvider(), content.get(0)).itemWithPath(content.get(1)).buildRequest().get();
 
                     if (driveItem != null) {
                         ResponseUtil.addDriveItem(true, driveItem, payload);
@@ -880,77 +919,20 @@ public class OperationsManagementDao {
                 source, targetFileName, isSourceReentered, isTargetReentered);
 
         try {
-            if (FileUtil.isPersonalDrive(source)) {
+            String driveId = null;
+            String path;
+
+            if (FileUtil.checkDriveIDContains(source)) {
+                LOGGER.debug("renameFile - Source is a shared drive path");
+                List<String> content = FileUtil.getDriveIDAndPath(source);
+                driveId = content.get(0);
+                path = content.get(1);
+            } else if (FileUtil.isPersonalDrive(source)) {
                 LOGGER.debug("renameFile - Source is a personal drive path");
-                Map<String, Object> response = new HashMap<>();
-                String path = FileUtil.getRelativeFilePath(source);
-                getFileInfo(null, path, response);
-
-                if ((boolean) response.get(Constants.IS_FILE_EXIST)) {
-                    LOGGER.debug("renameFile - Source file exists, proceeding with rename validation");
-                    DriveItem renameFile = (DriveItem) response.get(Constants.DRIVE_ITEM);
-                    String fileExtension = FileUtil.getBaseName(renameFile.name).get(1);
-                    String targetExtension = FileUtil.getBaseName(targetFileName).get(1);
-
-                    if (fileExtension != null && targetExtension == null) {
-                        LOGGER.warn("renameFile - Target filename missing extension | source: {}, target: {}", source, targetFileName);
-                        ResponseUtil.errorResponse(false, "File extension is not available", payload);
-                        telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                                "Missing file extension in target", TelemetryHelper.safeTagMap(
-                                        TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, TelemetryConstants.TELEMETRY_TAG_REASON, "missing_target_extension"));
-
-                        if (!isSourceReentered) {
-                            LOGGER.debug("renameFile - Prompting for re-entry due to missing extension");
-                            telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                                    TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "extension_check"));
-                            return reenterValidateRename(source, targetFileName, false, "Source File extension is not available");
-                        }
-                        return new ExtensionResponseBuilder().success(payload, null, null).build();
-                    }
-
-                    if (fileExtension != null && !fileExtension.equals(targetExtension)) {
-                        LOGGER.warn("renameFile - Extension mismatch | source ext: {}, target ext: {}", fileExtension, targetExtension);
-                        telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                                "Mismatched file extension", TelemetryHelper.safeTagMap(
-                                        TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "expected_extension", fileExtension));
-
-                        if (!isTargetReentered) {
-                            telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                                    TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "mismatch_extension"));
-                            return reenterValidateRename(targetFileName, source, false, "Target File extension is not available");
-                        }
-
-                        ResponseUtil.errorResponse(false, "File extension is Invalid, correct file extension is : " + fileExtension, payload);
-                        return new ExtensionResponseBuilder().success(payload, null, null).build();
-                    }
-
-                    DriveItem driveItem = new DriveItem();
-                    driveItem.name = targetFileName;
-                    LOGGER.debug("renameFile - Sending PATCH request to rename file at path: {}", path);
-                    FileUtil.getRootUserRequestBuilder(provider)
-                            .itemWithPath(path)
-                            .buildRequest()
-                            .patch(driveItem);
-
-                    ResponseUtil.errorResponse(true, "Renaming is successful", payload);
-                    telemetryHelper.recordSuccess(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                            TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName));
-                } else {
-                    telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                            "Source file not found", TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source));
-                    if (!isSourceReentered) {
-                        telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                                TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "source_missing"));
-                        return reenterValidateRename(source, targetFileName, true, "Source file not found");
-                    }
-                    ResponseUtil.errorResponse(false, Constants.FILE_NOT_FOUND, payload);
-                }
-
-                return new ExtensionResponseBuilder().success(payload, null, null).build();
-
+                path = FileUtil.getRelativeFilePath(source);
             } else {
                 telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
-                        "Invalid personal drive path", TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source));
+                        "Invalid drive path", TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source));
                 if (!isSourceReentered) {
                     telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
                             TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "invalid_path"));
@@ -959,6 +941,78 @@ public class OperationsManagementDao {
                 ResponseUtil.errorResponse(false, Constants.PLEASE_PROVIDE_VALID_SOURCE_PATH, payload);
                 return new ExtensionResponseBuilder().success(payload, null, null).build();
             }
+
+            Map<String, Object> response = new HashMap<>();
+            getFileInfo(driveId, path, response);
+
+            if ((boolean) response.get(Constants.IS_FILE_EXIST)) {
+                LOGGER.debug("renameFile - Source file exists, proceeding with rename validation");
+                DriveItem renameFile = (DriveItem) response.get(Constants.DRIVE_ITEM);
+                String fileExtension = FileUtil.getBaseName(renameFile.name).get(1);
+                String targetExtension = FileUtil.getBaseName(targetFileName).get(1);
+
+                if (fileExtension != null && targetExtension == null) {
+                    LOGGER.warn("renameFile - Target filename missing extension | source: {}, target: {}", source, targetFileName);
+                    ResponseUtil.errorResponse(false, "File extension is not available", payload);
+                    telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                            "Missing file extension in target", TelemetryHelper.safeTagMap(
+                                    TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, TelemetryConstants.TELEMETRY_TAG_REASON, "missing_target_extension"));
+
+                    if (!isSourceReentered) {
+                        LOGGER.debug("renameFile - Prompting for re-entry due to missing extension");
+                        telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                                TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "extension_check"));
+                        return reenterValidateRename(source, targetFileName, false, "Source File extension is not available");
+                    }
+                    return new ExtensionResponseBuilder().success(payload, null, null).build();
+                }
+
+                if (fileExtension != null && !fileExtension.equals(targetExtension)) {
+                    LOGGER.warn("renameFile - Extension mismatch | source ext: {}, target ext: {}", fileExtension, targetExtension);
+                    telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                            "Mismatched file extension", TelemetryHelper.safeTagMap(
+                                    TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "expected_extension", fileExtension));
+
+                    if (!isTargetReentered) {
+                        telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                                TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "mismatch_extension"));
+                        return reenterValidateRename(targetFileName, source, false, "Target File extension is not available");
+                    }
+
+                    ResponseUtil.errorResponse(false, "File extension is Invalid, correct file extension is : " + fileExtension, payload);
+                    return new ExtensionResponseBuilder().success(payload, null, null).build();
+                }
+
+                DriveItem driveItem = new DriveItem();
+                driveItem.name = targetFileName;
+                LOGGER.debug("renameFile - Sending PATCH request to rename file at path: {}", path);
+                if (driveId != null) {
+                    FileUtil.getSharedUserRequestBuilder(createProvider(), driveId)
+                            .itemWithPath(path)
+                            .buildRequest()
+                            .patch(driveItem);
+                } else {
+                    FileUtil.getRootUserRequestBuilder(createProvider())
+                            .itemWithPath(path)
+                            .buildRequest()
+                            .patch(driveItem);
+                }
+
+                ResponseUtil.errorResponse(true, "Renaming is successful", payload);
+                telemetryHelper.recordSuccess(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                        TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName));
+            } else {
+                telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                        "Source file not found", TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source));
+                if (!isSourceReentered) {
+                    telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_RENAME_FILE, startTime,
+                            TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_SOURCE, source, TelemetryConstants.TELEMETRY_TAG_TARGET, targetFileName, "stage", "source_missing"));
+                    return reenterValidateRename(source, targetFileName, true, "Source file not found");
+                }
+                ResponseUtil.errorResponse(false, Constants.FILE_NOT_FOUND, payload);
+            }
+
+            return new ExtensionResponseBuilder().success(payload, null, null).build();
         } catch (GraphServiceException | IllegalArgumentException ex) {
             LOGGER.error("renameFile - Exception occurred: {}", ex.getMessage(), ex);
             String message = ex.getMessage() != null && ex.getMessage().contains(Constants.ITEM_NOT_FOUND)
@@ -1001,10 +1055,18 @@ public class OperationsManagementDao {
         LOGGER.info("readTxtFile - Starting read operation for source: {}", source);
 
         try {
-            if (FileUtil.isPersonalDrive(source)) {
-                String path = FileUtil.getRelativeFilePath(source);
+            if (FileUtil.isPersonalDrive(source) || FileUtil.checkDriveIDContains(source)) {
+                String driveId = null;
+                String path;
+                if (FileUtil.checkDriveIDContains(source)) {
+                    List<String> content = FileUtil.getDriveIDAndPath(source);
+                    driveId = content.get(0);
+                    path = content.get(1);
+                } else {
+                    path = FileUtil.getRelativeFilePath(source);
+                }
                 Map<String, Object> response = new HashMap<>();
-                getFileInfo(null, path, response);
+                getFileInfo(driveId, path, response);
 
                 if ((boolean) response.get(Constants.IS_FILE_EXIST)) {
                     DriveItem driveItem = (DriveItem) response.get(Constants.DRIVE_ITEM);
@@ -1018,10 +1080,11 @@ public class OperationsManagementDao {
                             && driveItem.folder == null
                             && FileUtil.getBaseName(driveItem.name).get(1) != null
                             && driveItem.id != null
-                            && FileUtil.getBaseName(driveItem.name).get(1).equalsIgnoreCase("txt")) {
+                            && (FileUtil.getBaseName(driveItem.name).get(1).equalsIgnoreCase("txt")
+                                || FileUtil.getBaseName(driveItem.name).get(1).equalsIgnoreCase("md"))) {
 
-                        LOGGER.info("readTxtFile - Valid TXT file found. Reading content.");
-                        InputStream inputStream = FileUtil.getUserRequestBuilderWithItemId(provider, null, driveItem.id)
+                        LOGGER.info("readTxtFile - Valid TXT/MD file found. Reading content.");
+                        InputStream inputStream = FileUtil.getUserRequestBuilderWithItemId(createProvider(), driveId, driveItem.id)
                                 .content().buildRequest().get();
                         payload.put("Content", FileUtil.readFile(inputStream));
                         payload.put(Constants.MESSAGE, Constants.FILE_FOUND);
@@ -1270,13 +1333,14 @@ public class OperationsManagementDao {
      */
     private void uploadTextFileHelper(String fileContent, String target, Map<String, Object> payload, DriveItem driveItem) throws IOException {
         String[] stream = target.split("/");
-        String fileName = stream[stream.length - 1].contains(".txt") ? stream[stream.length - 1] : null;
+        String lastSegment = stream[stream.length - 1];
+        String fileName = (lastSegment.contains(".txt") || lastSegment.contains(".md")) ? lastSegment : null;
         if (fileName != null) {
             java.io.File javaFile = FileUtil.createTxtFile(fileName, fileContent);
             String path = FileUtil.getRelativeFilePath(target);
             getFileInfo(null, path, payload);
             if (!(boolean) payload.get(Constants.IS_FILE_EXIST)) {
-                DriveItem uploadFile = FileUtil.getUserRequestBuilderWithItemId(provider, null, driveItem.id)
+                DriveItem uploadFile = FileUtil.getUserRequestBuilderWithItemId(createProvider(), null, driveItem.id)
                         .itemWithPath(javaFile.getName())
                         .content().buildRequest()
                         .put(DriveUtil.getByteArray(javaFile));
@@ -1341,8 +1405,8 @@ public class OperationsManagementDao {
     @Nullable
     private DriveItem getShareRootDriveItem(String path, String driveId) {
         return path != null && !path.isEmpty()
-                ? FileUtil.getSharedUserRequestBuilder(provider, driveId).itemWithPath(path).buildRequest().get()
-                : FileUtil.getSharedUserRequestBuilder(provider, driveId).buildRequest().get();
+                ? FileUtil.getSharedUserRequestBuilder(createProvider(), driveId).itemWithPath(path).buildRequest().get()
+                : FileUtil.getSharedUserRequestBuilder(createProvider(), driveId).buildRequest().get();
     }
 
     /**
@@ -1357,8 +1421,8 @@ public class OperationsManagementDao {
     @Nullable
     private DriveItem getPersonalDriveItem(String path) {
         return path != null && !path.isEmpty()
-                ? FileUtil.getRootUserRequestBuilder(provider).itemWithPath(path).buildRequest().get()
-                : FileUtil.getRootUserRequestBuilder(provider).buildRequest().get();
+                ? FileUtil.getRootUserRequestBuilder(createProvider()).itemWithPath(path).buildRequest().get()
+                : FileUtil.getRootUserRequestBuilder(createProvider()).buildRequest().get();
     }
 
     /**

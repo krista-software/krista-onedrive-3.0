@@ -19,6 +19,8 @@ retrieve comprehensive folder statistics.
 |----------------|------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Source Path    | Text | Yes      | Full path to the folder in the cloud storage to analyze (e.g., /Documents or /Sites/TeamSite/Shared Documents). For shared drives, use format driveId:/path/to/folder |
 
+> 📌 **Root folder path:** To target your OneDrive **root folder**, enter **`drive/root:/`** as the path (leaving the field blank also works). For a subfolder, add it after — e.g. **`drive/root:/Documents`**. For a shared drive / SharePoint / Teams library, use the Drive Path (`drives/{driveId}/root:/…`) returned by [Get Drives](pages/GetDrives.md).
+
 ## Output Parameters
 
 | Parameter Name | Type | Description                                                                                                                                           |

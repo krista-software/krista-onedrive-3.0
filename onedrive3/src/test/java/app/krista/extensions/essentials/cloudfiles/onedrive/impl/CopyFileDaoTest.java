@@ -13,11 +13,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
 
+import app.krista.extension.executor.ExtensionResponse;
 import app.krista.extensions.essentials.cloudfiles.onedrive.catalog.FileHandlers.TelemetryHelper;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.connectors.GraphServiceClientProvider;
 import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.Constants;
@@ -829,6 +830,229 @@ public class CopyFileDaoTest {
                 assertTrue("Exception " + i + " should mention operationsManagementDao",
                           e.getMessage().contains("operationsManagementDao"));
             }
+        }
+    }
+
+    // ========================================
+    // COPY WITH NAME TESTS - createRequestBody(folderId, targetFileName)
+    // ========================================
+
+    /**
+     * Test createRequestBody with targetFileName produces JSON containing "name" field
+     */
+    @Test
+    public void testCreateRequestBody_WithTargetFileName() throws IOException {
+        String folderId = "test-folder-id";
+        String targetFileName = "2026-04-16_ACN-SLOB-Worksheet.xlsx";
+
+        RequestBody requestBody = copyFileDao.createRequestBody(folderId, targetFileName);
+
+        assertNotNull("Request body should not be null", requestBody);
+        assertNotNull("Content type should not be null", requestBody.contentType());
+        assertTrue("Content type should be JSON",
+                Objects.requireNonNull(requestBody.contentType()).toString().startsWith("application/json"));
+
+        // Read body content to verify JSON structure
+        okio.Buffer buffer = new okio.Buffer();
+        requestBody.writeTo(buffer);
+        String json = buffer.readUtf8();
+
+        assertTrue("JSON should contain parentReference", json.contains("parentReference"));
+        assertTrue("JSON should contain folder ID", json.contains(folderId));
+        assertTrue("JSON should contain name field", json.contains("\"name\""));
+        assertTrue("JSON should contain target file name", json.contains(targetFileName));
+    }
+
+    /**
+     * Test createRequestBody with null targetFileName does NOT include "name" field (backward compat)
+     */
+    @Test
+    public void testCreateRequestBody_WithNullTargetFileName() throws IOException {
+        String folderId = "test-folder-id";
+
+        RequestBody requestBody = copyFileDao.createRequestBody(folderId, null);
+
+        okio.Buffer buffer = new okio.Buffer();
+        requestBody.writeTo(buffer);
+        String json = buffer.readUtf8();
+
+        assertTrue("JSON should contain parentReference", json.contains("parentReference"));
+        assertTrue("JSON should contain folder ID", json.contains(folderId));
+        assertFalse("JSON should NOT contain name field when targetFileName is null", json.contains("\"name\""));
+    }
+
+    /**
+     * Test createRequestBody with blank targetFileName does NOT include "name" field
+     */
+    @Test
+    public void testCreateRequestBody_WithBlankTargetFileName() throws IOException {
+        String folderId = "test-folder-id";
+
+        RequestBody requestBody = copyFileDao.createRequestBody(folderId, "   ");
+
+        okio.Buffer buffer = new okio.Buffer();
+        requestBody.writeTo(buffer);
+        String json = buffer.readUtf8();
+
+        assertFalse("JSON should NOT contain name field when targetFileName is blank", json.contains("\"name\""));
+    }
+
+    /**
+     * Test createRequestBody with empty targetFileName does NOT include "name" field
+     */
+    @Test
+    public void testCreateRequestBody_WithEmptyTargetFileName() throws IOException {
+        String folderId = "test-folder-id";
+
+        RequestBody requestBody = copyFileDao.createRequestBody(folderId, "");
+
+        okio.Buffer buffer = new okio.Buffer();
+        requestBody.writeTo(buffer);
+        String json = buffer.readUtf8();
+
+        assertFalse("JSON should NOT contain name field when targetFileName is empty", json.contains("\"name\""));
+    }
+
+    /**
+     * Test createRequestBody with various realistic target file names
+     */
+    @Test
+    public void testCreateRequestBody_WithVariousTargetFileNames() throws IOException {
+        String folderId = "target-folder-123";
+        String[] fileNames = {
+                "report.pdf",
+                "2026-04-16_ACN-SLOB-Worksheet.xlsx",
+                "INV-2026-0042.pdf",
+                "backup_2026_04_20.tar.gz",
+                "file with spaces.docx",
+                "file_name_with_underscores.txt",
+                "UPPERCASE.CSV",
+                "mixed.Case.Name.json"
+        };
+
+        for (String fileName : fileNames) {
+            RequestBody requestBody = copyFileDao.createRequestBody(folderId, fileName);
+
+            okio.Buffer buffer = new okio.Buffer();
+            requestBody.writeTo(buffer);
+            String json = buffer.readUtf8();
+
+            assertTrue("JSON should contain name field for: " + fileName, json.contains("\"name\""));
+            assertTrue("JSON should contain file name: " + fileName, json.contains(fileName));
+            assertTrue("JSON should contain parentReference", json.contains("parentReference"));
+            assertTrue("JSON should contain folder ID", json.contains(folderId));
+        }
+    }
+
+    /**
+     * Test createRequestBody with special characters in target file name
+     */
+    @Test
+    public void testCreateRequestBody_WithSpecialCharsInTargetFileName() throws IOException {
+        String folderId = "target-folder-123";
+        String[] specialNames = {
+                "file (1).txt",
+                "file [copy].pdf",
+                "file {v2}.docx",
+                "file'name.txt",
+                "ファイル.xlsx",
+                "файл.pdf",
+                "ملف.docx"
+        };
+
+        for (String fileName : specialNames) {
+            RequestBody requestBody = copyFileDao.createRequestBody(folderId, fileName);
+
+            assertNotNull("Request body should not be null for: " + fileName, requestBody);
+            assertTrue("Content type should be JSON",
+                    Objects.requireNonNull(requestBody.contentType()).toString().startsWith("application/json"));
+
+            okio.Buffer buffer = new okio.Buffer();
+            requestBody.writeTo(buffer);
+            String json = buffer.readUtf8();
+
+            assertTrue("JSON should contain name field for: " + fileName, json.contains("\"name\""));
+        }
+    }
+
+    /**
+     * Test that single-arg createRequestBody delegates to two-arg with null targetFileName
+     */
+    @Test
+    public void testCreateRequestBody_SingleArgMatchesTwoArgWithNull() throws IOException {
+        String folderId = "test-folder-id";
+
+        RequestBody singleArg = copyFileDao.createRequestBody(folderId);
+        RequestBody twoArgNull = copyFileDao.createRequestBody(folderId, null);
+
+        okio.Buffer buf1 = new okio.Buffer();
+        singleArg.writeTo(buf1);
+        String json1 = buf1.readUtf8();
+
+        okio.Buffer buf2 = new okio.Buffer();
+        twoArgNull.writeTo(buf2);
+        String json2 = buf2.readUtf8();
+
+        assertEquals("Single-arg and two-arg with null should produce same JSON", json1, json2);
+    }
+
+    /**
+     * Test copyFile with targetFileName returns error response due to null operationsManagementDao.
+     * Verifies the method signature accepts targetFileName parameter and handles the dependency
+     * absence gracefully (copyFile catches all exceptions internally).
+     */
+    @Test
+    public void testCopyFile_WithTargetFileName_ReturnsErrorDueToDependency() {
+        ExtensionResponse response = copyFileDao.copyFile(
+                VALID_SOURCE_PATH, VALID_TARGET_PATH,
+                false, false,
+                false, false,
+                true, "custom-name.xlsx");
+        assertNotNull("Should return a response even when dependencies are null", response);
+    }
+
+    /**
+     * Test copyFile without targetFileName (null) returns error response due to null operationsManagementDao.
+     * Ensures backward compatibility of the overloaded method.
+     */
+    @Test
+    public void testCopyFile_WithNullTargetFileName_ReturnsErrorDueToDependency() {
+        ExtensionResponse response = copyFileDao.copyFile(
+                VALID_SOURCE_PATH, VALID_TARGET_PATH,
+                false, false,
+                false, false,
+                true, null);
+        assertNotNull("Should return a response even when dependencies are null", response);
+    }
+
+    /**
+     * Test containsInvalidCharacters with typical target file names for Copy With Name
+     */
+    @Test
+    public void testContainsInvalidCharacters_TypicalCopyWithNameFileNames() {
+        // Valid file names that should be accepted
+        String[] validNames = {
+                "2026-04-16_ACN-SLOB-Worksheet.xlsx",
+                "INV-2026-0042.pdf",
+                "report_final (v2).docx",
+                "backup.tar.gz",
+                "file name with spaces.txt"
+        };
+        for (String name : validNames) {
+            assertFalse("Should be valid: " + name, copyFileDao.containsInvalidCharacters(name));
+        }
+
+        // Invalid file names that should be rejected
+        String[] invalidNames = {
+                "file:name.txt",
+                "file*name.xlsx",
+                "file?name.pdf",
+                "path/to/file.txt",
+                "file<name>.docx",
+                "file|name.csv"
+        };
+        for (String name : invalidNames) {
+            assertTrue("Should be invalid: " + name, copyFileDao.containsInvalidCharacters(name));
         }
     }
 

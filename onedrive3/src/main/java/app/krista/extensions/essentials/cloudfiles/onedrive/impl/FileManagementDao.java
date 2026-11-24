@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>. 
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 package app.krista.extensions.essentials.cloudfiles.onedrive.impl;
@@ -32,7 +32,9 @@ import app.krista.extensions.essentials.cloudfiles.onedrive.impl.util.*;
 import app.krista.extensions.essentials.cloudfiles.onedrive.service.File;
 import app.krista.model.base.FreeForm;
 import com.microsoft.graph.http.GraphServiceException;
+import com.microsoft.graph.models.Drive;
 import com.microsoft.graph.models.DriveItem;
+import com.microsoft.graph.requests.DriveCollectionPage;
 import com.microsoft.graph.requests.DriveItemCollectionPage;
 import com.microsoft.graph.requests.DriveItemRequestBuilder;
 import com.microsoft.graph.requests.DriveSharedWithMeCollectionPage;
@@ -58,37 +60,31 @@ import java.util.stream.Collectors;
 public class FileManagementDao {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FileManagementDao.class);
+    private final GraphServiceClientProviderFactory providerFactory;
     private final GraphServiceClientProvider provider;
     private final OnedriveAttributes onedriveAttributes;
     private final ValidationTypeUtil validationTypeUtil;
     private final TelemetryHelper telemetryHelper;
 
-    /**
-     * Constructs a FileManagementDao with a factory-created provider.
-     *
-     * @param factory            Factory to create the GraphServiceClientProvider
-     * @param onedriveAttributes Attributes for OneDrive configuration
-     * @param validationTypeUtil Utility for validation operations
-     * @param telemetryHelper    Helper for telemetry recording
-     */
     @Inject
     public FileManagementDao(GraphServiceClientProviderFactory factory, OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
-        this(factory.create(), onedriveAttributes, validationTypeUtil, telemetryHelper);
+        this.providerFactory = factory;
+        this.provider = null;
+        this.onedriveAttributes = onedriveAttributes;
+        this.validationTypeUtil = validationTypeUtil;
+        this.telemetryHelper = telemetryHelper;
     }
 
-    /**
-     * Constructs a FileManagementDao with the specified provider and attributes.
-     *
-     * @param provider           The GraphServiceClientProvider for Microsoft Graph API calls
-     * @param onedriveAttributes Attributes for OneDrive configuration
-     * @param validationTypeUtil Utility for validation operations
-     * @param telemetryHelper    Helper for telemetry recording
-     */
     public FileManagementDao(GraphServiceClientProvider provider, OnedriveAttributes onedriveAttributes, ValidationTypeUtil validationTypeUtil, TelemetryHelper telemetryHelper) {
+        this.providerFactory = null;
         this.provider = provider;
         this.onedriveAttributes = onedriveAttributes;
         this.validationTypeUtil = validationTypeUtil;
         this.telemetryHelper = telemetryHelper;
+    }
+
+    private GraphServiceClientProvider createProvider() {
+        return provider != null ? provider : providerFactory.create();
     }
 
     private static void fetchFileResponse(List<File> files, FreeForm payload) {
@@ -183,9 +179,9 @@ public class FileManagementDao {
      * @param accountID    The account ID for authentication
      * @param payload      The payload to update with the results
      */
-    private void getSharedFiles(String relativePath, List<File> files, String search, boolean useEmail, String accountID, FreeForm payload) {
+    void getSharedFiles(String relativePath, List<File> files, String search, boolean useEmail, String accountID, FreeForm payload) {
         try {
-            DriveSharedWithMeCollectionPage page = provider.getUserRequestBuilder(useEmail, accountID)
+            DriveSharedWithMeCollectionPage page = createProvider().getUserRequestBuilder(useEmail, accountID)
                     .drive().sharedWithMe().buildRequest().top(100000).get();
 
             while (page != null && !page.getCurrentPage().isEmpty()) {
@@ -198,14 +194,14 @@ public class FileManagementDao {
                         if (relativePath.equals(Constants.SHARED) || relativePath.equals(Constants.FORWARD_SLASH_SHARED)) {
                             if (search != null && !search.isEmpty()
                                     && driveInPage.name != null && driveInPage.name.contains(search)) {
-                                DriveItem driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+                                DriveItem driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                                         .drives(driveInPage.remoteItem.parentReference.driveId)
                                         .items(driveInPage.id)
                                         .buildRequest().expand(Constants.PERMISSIONS).get();
                                 files.add(new FileImpl(driveItem, null, onedriveAttributes));
                             }
-                            if (search != null && search.isBlank()) {
-                                DriveItem driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+                            if (search == null || search.isBlank()) {
+                                DriveItem driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                                         .drives(driveInPage.remoteItem.parentReference.driveId)
                                         .items(driveInPage.id)
                                         .buildRequest().expand(Constants.PERMISSIONS).get();
@@ -250,13 +246,13 @@ public class FileManagementDao {
     public void getRootFilesByDriveIDPath(String driveID, String relativePath, List<File> files, boolean useEmail, String accountID, String search, FreeForm payload) {
 
         try {
-            DriveItem driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+            DriveItem driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                     .drives(driveID).root()
                     .itemWithPath(relativePath)
                     .buildRequest().expand(Constants.PERMISSIONS).get();
 
             if (driveItem != null && driveItem.id != null && driveItem.folder != null) {
-                DriveItemCollectionPage page = provider.getUserRequestBuilder(useEmail, accountID)
+                DriveItemCollectionPage page = createProvider().getUserRequestBuilder(useEmail, accountID)
                         .drives(driveID).root()
                         .itemWithPath(relativePath).children().buildRequest().get();
                 if (page != null && page.getCurrentPage().isEmpty()) {
@@ -267,13 +263,13 @@ public class FileManagementDao {
                     for (DriveItem driveInPage : page.getCurrentPage()) {
                         if (search != null && !search.isEmpty() && driveInPage.id != null
                                 && driveInPage.name != null && driveInPage.name.contains(search)) {
-                            PermissionCollectionPage permissionPage = provider.getUserRequestBuilder(useEmail, accountID)
+                            PermissionCollectionPage permissionPage = createProvider().getUserRequestBuilder(useEmail, accountID)
                                     .drives(driveID).items(driveInPage.id)
                                     .permissions().buildRequest().get();
                             files.add(new FileImpl(driveInPage, permissionPage, onedriveAttributes));
                         }
-                        if (search != null && search.isBlank() && driveInPage.id != null) {
-                            PermissionCollectionPage permissionPage = provider.getUserRequestBuilder(useEmail, accountID)
+                        if ((search == null || search.isBlank()) && driveInPage.id != null) {
+                            PermissionCollectionPage permissionPage = createProvider().getUserRequestBuilder(useEmail, accountID)
                                     .drives(driveID).items(driveInPage.id).permissions()
                                     .buildRequest().get();
 
@@ -333,7 +329,7 @@ public class FileManagementDao {
                             PermissionCollectionPage permissionPage = getPermissionCollectionPage(useEmail, accountID, driveInPage);
                             files.add(new FileImpl(driveInPage, permissionPage, onedriveAttributes));
                         }
-                        if (search != null && search.isBlank() && driveInPage.id != null) {
+                        if ((search == null || search.isBlank()) && driveInPage.id != null) {
                             PermissionCollectionPage permissionPage = getPermissionCollectionPage(useEmail, accountID, driveInPage);
                             files.add(new FileImpl(driveInPage, permissionPage, onedriveAttributes));
                         }
@@ -359,15 +355,15 @@ public class FileManagementDao {
     }
 
     @Nullable
-    private PermissionCollectionPage getPermissionCollectionPage(boolean useEmail, String accountID, DriveItem driveInPage) {
-        return provider.getUserRequestBuilder(useEmail, accountID)
+    PermissionCollectionPage getPermissionCollectionPage(boolean useEmail, String accountID, DriveItem driveInPage) {
+        return createProvider().getUserRequestBuilder(useEmail, accountID)
                 .drive().items(Objects.requireNonNull(driveInPage.id))
                 .permissions().buildRequest().get();
     }
 
     @NotNull
-    private DriveItemRequestBuilder getRequestBuilder(boolean useEmail, String accountID) {
-        return provider.getUserRequestBuilder(useEmail, accountID).drive().root();
+    DriveItemRequestBuilder getRequestBuilder(boolean useEmail, String accountID) {
+        return createProvider().getUserRequestBuilder(useEmail, accountID).drive().root();
     }
 
     /**
@@ -423,7 +419,7 @@ public class FileManagementDao {
             DriveItemCollectionPage driveItemCollectionPage;
             if (sourcePath.contains(Constants.DRIVE_ROOT)) {
                 String path = FileUtil.getRelativeFilePath(sourcePath);
-                driveItemCollectionPage = provider.getUserRequestBuilder(useEmail, accountID)
+                driveItemCollectionPage = createProvider().getUserRequestBuilder(useEmail, accountID)
                         .drive().root()
                         .itemWithPath(path).children().buildRequest().get();
                 if (driveItemCollectionPage != null) {
@@ -432,7 +428,7 @@ public class FileManagementDao {
             }
             if (FileUtil.checkDriveIDContains(sourcePath)) {
                 List<String> content = FileUtil.getDriveIDAndPath(sourcePath);
-                driveItemCollectionPage = provider.getUserRequestBuilder(useEmail, accountID)
+                driveItemCollectionPage = createProvider().getUserRequestBuilder(useEmail, accountID)
                         .drives(content.get(0)).root()
                         .itemWithPath(content.get(1)).children().buildRequest().get();
                 if (driveItemCollectionPage != null) {
@@ -565,7 +561,7 @@ public class FileManagementDao {
 
                 if (sourcePath.contains(Constants.DRIVE_ROOT)) {
                     String path = FileUtil.getRelativeFilePath(sourcePath);
-                    driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+                    driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                             .drive()
                             .root()
                             .itemWithPath(path)
@@ -579,7 +575,7 @@ public class FileManagementDao {
                     }
                 } else if (FileUtil.checkDriveIDContains(sourcePath)) {
                     List<String> content = FileUtil.getDriveIDAndPath(sourcePath);
-                    driveItem = provider.getUserRequestBuilder(useEmail, accountID)
+                    driveItem = createProvider().getUserRequestBuilder(useEmail, accountID)
                             .drives(content.get(0))
                             .root()
                             .itemWithPath(content.get(1))
@@ -618,6 +614,19 @@ public class FileManagementDao {
      * @return ExtensionResponse containing the result of the operation or validation request
      */
     public ExtensionResponse createFolder(String folderName, String path, boolean isReenteredFolderName, boolean isReenteredTargetPath) {
+        // Backward-compatible overload: retry prompts enabled by default.
+        return createFolder(folderName, path, isReenteredFolderName, isReenteredTargetPath, true);
+    }
+
+    /**
+     * Creates a new folder in OneDrive with control over re-entry (retry) behavior.
+     *
+     * @param allowRetry When {@code true}, validation failures prompt the user to re-enter
+     *                   values (folder name / target path); when {@code false}, a direct
+     *                   error is returned without a re-entry prompt.
+     * @see #createFolder(String, String, boolean, boolean)
+     */
+    public ExtensionResponse createFolder(String folderName, String path, boolean isReenteredFolderName, boolean isReenteredTargetPath, Boolean allowRetry) {
         long startTime = System.currentTimeMillis();
         LOGGER.info("FileManagementDao.createFolder - Starting folder creation | folderName: {}, path: {}, isReenteredFolderName: {}, isReenteredTargetPath: {}",
                 folderName, path, isReenteredFolderName, isReenteredTargetPath);
@@ -629,7 +638,7 @@ public class FileManagementDao {
                 telemetryHelper.recordValidationError(TelemetryConstants.TELEMETRY_CREATE_FOLDER, startTime, TelemetryConstants.TELEMETRY_ERROR_FOLDER_NAME_EMPTY,
                         TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_FOLDER_NAME, folderName, TelemetryConstants.TELEMETRY_TAG_PATH, path));
 
-                if (!isReenteredFolderName) {
+                if (!isReenteredFolderName && Boolean.TRUE.equals(allowRetry)) {
                     LOGGER.debug("FileManagementDao.createFolder - Requesting folder name reentry | path: {}", path);
                     return reenterValidate(Validator.ValidationResource.FOLDER_NAME,
                             SubCatalogConstants.CONFIRM_REENTER_CREATE_FOLDER, folderName, path, true);
@@ -649,13 +658,13 @@ public class FileManagementDao {
                 if (!(boolean) resultPayload.get(Constants.SUCCESS)) {
                     String failureReason = (String) resultPayload.get(Constants.MESSAGE);
 
-                    if (!isReenteredFolderName && Constants.FOLDER_ALREADY_EXIST.equals(failureReason)) {
+                    if (!isReenteredFolderName && Boolean.TRUE.equals(allowRetry) && Constants.FOLDER_ALREADY_EXIST.equals(failureReason)) {
                         LOGGER.debug("FileManagementDao.createFolder - Folder already exists, requesting folder name reentry");
                         telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_CREATE_FOLDER, startTime,
                                 TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_FOLDER_NAME, folderName, TelemetryConstants.TELEMETRY_TAG_REASON, TelemetryConstants.TELEMETRY_REASON_FOLDER_ALREADY_EXISTS, TelemetryConstants.TELEMETRY_TAG_PATH, path));
                         return reenterValidate(Validator.ValidationResource.FOLDER_NAME,
                                 SubCatalogConstants.CONFIRM_REENTER_CREATE_FOLDER, folderName, path, false);
-                    } else if (!isReenteredTargetPath) {
+                    } else if (!isReenteredTargetPath && Boolean.TRUE.equals(allowRetry)) {
                         telemetryHelper.recordRetryPrompted(TelemetryConstants.TELEMETRY_CREATE_FOLDER, startTime,
                                 TelemetryHelper.safeTagMap(TelemetryConstants.TELEMETRY_TAG_FOLDER_NAME, folderName, TelemetryConstants.TELEMETRY_TAG_REASON, TelemetryConstants.TELEMETRY_REASON_INVALID_TARGET_PATH, TelemetryConstants.TELEMETRY_TAG_PATH, path));
                         return reenterValidate(Validator.ValidationResource.TARGET_PATH,
@@ -682,7 +691,7 @@ public class FileManagementDao {
                 Map<String, Object> resultPayload = executeCreateFolder(folderName, payload, true);
 
                 if (!(boolean) resultPayload.get(Constants.SUCCESS)) {
-                    if (!isReenteredTargetPath) {
+                    if (!isReenteredTargetPath && Boolean.TRUE.equals(allowRetry)) {
                         telemetryHelper.recordRetryPrompted("OneDrive.createFolder", startTime,
                                 TelemetryHelper.safeTagMap("folderName", folderName, "path", path, "reason", "shared_path_failure"));
                         return reenterValidate(Validator.ValidationResource.TARGET_PATH,
@@ -704,7 +713,7 @@ public class FileManagementDao {
                         .build();
 
             } else {
-                if (!isReenteredTargetPath) {
+                if (!isReenteredTargetPath && Boolean.TRUE.equals(allowRetry)) {
                     LOGGER.debug("FileManagementDao.createFolder - Requesting target path reentry for invalid format");
                     telemetryHelper.recordRetryPrompted("OneDrive.createFolder", startTime,
                             TelemetryHelper.safeTagMap("folderName", folderName, "path", path, "reason", "invalid_path_format"));
@@ -768,7 +777,7 @@ public class FileManagementDao {
     private void getDriveItemForPath(String path, Map<String, Object> payload) {
         try {
             String relativeFilePath = FileUtil.getRelativeFilePath(path);
-            DriveItem parentFolder = FileUtil.getRootUserRequestBuilder(provider)
+            DriveItem parentFolder = FileUtil.getRootUserRequestBuilder(createProvider())
                     .itemWithPath(relativeFilePath.isBlank() ? "/" : relativeFilePath)
                     .buildRequest()
                     .get();
@@ -789,7 +798,7 @@ public class FileManagementDao {
      */
     private void getDriveItemForSharedPath(String driveId, String path, Map<String, Object> payload) {
         try {
-            DriveItem parentFolder = FileUtil.getSharedUserRequestBuilder(provider, driveId).itemWithPath(path)
+            DriveItem parentFolder = FileUtil.getSharedUserRequestBuilder(createProvider(), driveId).itemWithPath(path)
                     .buildRequest()
                     .get();
             payload.put(Constants.DRIVE_ITEM, parentFolder);
@@ -825,7 +834,7 @@ public class FileManagementDao {
      */
     private DriveItem createFolderInDrive(String parentFolderId, String driveId, String folderName, Map<String, Object> payload) {
         try {
-            DriveItem createdFolder = FileUtil.getUserRequestBuilderWithItemId(provider, driveId, parentFolderId)
+            DriveItem createdFolder = FileUtil.getUserRequestBuilderWithItemId(createProvider(), driveId, parentFolderId)
                     .children()
                     .buildRequest()
                     .post(DriveUtil.getDriveItemForItem(folderName));
@@ -912,5 +921,70 @@ public class FileManagementDao {
                 .build();
     }
 
+    /**
+     * Lists all drives (OneDrive personal + SharePoint document libraries) accessible to the
+     * authenticated user.  The returned {@code Drive Path} values are pre-formatted as
+     * {@code drives/{driveId}/root:/} so they can be pasted directly into the
+     * <em>Source Path</em> field of any other catalog request (List Files, List Folders, etc.).
+     *
+     * @param search    Optional case-insensitive substring filter on the drive display name.
+     *                  {@code null} or blank returns all drives.
+     * @param useEmail  {@code true} when operator e-mail credentials are used (Setup-tab mode);
+     *                  {@code false} for per-user MCP mode.
+     * @param accountID The account identifier for authentication.
+     * @return {@link ExtensionResponse} containing {@code Drives} (list of drive maps),
+     *         {@code Success} (boolean) and {@code Message} (String).
+     */
+    public ExtensionResponse getListOfDrives(String search, boolean useEmail, String accountID) {
+        LOGGER.info("FileManagementDao.getListOfDrives - Starting | search: {}, useEmail: {}, accountID: {}",
+                search, useEmail, accountID);
+        Map<String, Object> payload = new HashMap<>();
+        try {
+            DriveCollectionPage drivesPage = createProvider()
+                    .getUserRequestBuilder(useEmail, accountID)
+                    .drives()
+                    .buildRequest()
+                    .get();
+
+            List<Map<String, Object>> drivesList = new ArrayList<>();
+            if (drivesPage != null) {
+                for (Drive drive : drivesPage.getCurrentPage()) {
+                    if (drive.id == null) continue;
+                    String drivePath = "drives/" + drive.id + "/root:/";
+                    boolean matchesSearch = search == null || search.isBlank()
+                            || (drive.name != null && drive.name.toLowerCase().contains(search.toLowerCase()));
+                    if (matchesSearch) {
+                        Map<String, Object> driveInfo = new LinkedHashMap<>();
+                        driveInfo.put("Drive Path", drivePath);
+                        driveInfo.put("Drive Name", drive.name != null ? drive.name : "");
+                        driveInfo.put("Drive Type", drive.driveType != null ? drive.driveType : "");
+                        driveInfo.put("Owner", drive.owner != null && drive.owner.user != null
+                                ? drive.owner.user.displayName : "");
+                        drivesList.add(driveInfo);
+                    }
+                }
+            }
+
+            LOGGER.info("FileManagementDao.getListOfDrives - Found {} drive(s)", drivesList.size());
+            payload.put("Drives", drivesList);
+            payload.put("Success", true);
+            payload.put("Message", drivesList.size() + " drive(s) found");
+            return new ExtensionResponseBuilder().success(payload, null, null).build();
+
+        } catch (GraphServiceException | IllegalArgumentException cause) {
+            LOGGER.error("FileManagementDao.getListOfDrives - Error: {}", cause.getMessage(), cause);
+            payload.put("Success", false);
+            payload.put("Message", cause.getMessage() != null
+                    ? cause.getMessage() : Constants.PLEASE_PROVIDE_VALID_SOURCE_PATH);
+            payload.put("Drives", Collections.emptyList());
+            return new ExtensionResponseBuilder().success(payload, null, null).build();
+        } catch (Exception cause) {
+            LOGGER.error("FileManagementDao.getListOfDrives - Unexpected error: {}", cause.getMessage(), cause);
+            payload.put("Success", false);
+            payload.put("Message", Constants.PLEASE_PROVIDE_VALID_SOURCE_PATH);
+            payload.put("Drives", Collections.emptyList());
+            return new ExtensionResponseBuilder().success(payload, null, null).build();
+        }
+    }
 
 }
