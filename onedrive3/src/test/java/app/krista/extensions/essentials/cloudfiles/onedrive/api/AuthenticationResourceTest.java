@@ -961,9 +961,9 @@ public class AuthenticationResourceTest {
     public void testBuildCallbackTokenKey_usesSdkCompositeKeyForWorkspaceContact() {
         OnedriveAttributes attrs = createPublicOwnAttributes();
 
-        String tokenKey = resource.buildCallbackTokenKey("wsContact-user-123", attrs);
+        String tokenKey = resource.buildCallbackTokenKey("REDACTED_SECRET", attrs);
 
-        assertEquals(MicrosoftAuthSdk.buildTokenKey("wsContact-user-123", attrs.getClientId(), attrs.getAuthType()), tokenKey);
+        assertEquals(MicrosoftAuthSdk.buildTokenKey("REDACTED_SECRET", attrs.getClientId(), attrs.getAuthType()), tokenKey);
     }
 
     @Test
@@ -975,8 +975,8 @@ public class AuthenticationResourceTest {
 
         resource.storeRefreshTokenAliases(tokenStore(tokens), "wsContact-callback-123", attrs, "refresh-token");
 
-        assertEquals("refresh-token", tokens.get(MicrosoftAuthSdk.buildTokenKey("wsContact-callback-123", attrs.getClientId(), attrs.getAuthType())));
-        assertEquals("refresh-token", tokens.get("wsContact-callback-123"));
+        assertEquals("refresh-token", tokens.get(MicrosoftAuthSdk.buildTokenKey("REDACTED_SECRET", attrs.getClientId(), attrs.getAuthType())));
+        assertEquals("refresh-token", tokens.get("REDACTED_SECRET"));
         assertEquals("refresh-token", tokens.get(MicrosoftAuthSdk.buildTokenKey(authorizedAccountId, attrs.getClientId(), attrs.getAuthType())));
         assertEquals("refresh-token", tokens.get(authorizedAccountId));
         assertEquals("refresh-token", tokens.get(MicrosoftAuthSdk.buildTokenKey(TEST_EMAIL, attrs.getClientId(), attrs.getAuthType())));
